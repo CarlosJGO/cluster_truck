@@ -17,7 +17,7 @@ maquinas:
     datos: C:\Users\DELL\OneDrive\Documentos\Desktop\cluster_truck\datos
   andres_cadena:
     so: windows
-    ip: 192.168.1.12
+    ip: 10.42.0.13
     hilos: 6
     datos: C:\Users\Pc\OneDrive\Documentos\desarrollo movil\Cluster\cluster_truck\datos
   worker_rg:
@@ -25,4 +25,3 @@ maquinas:
     ip: 10.42.0.7
     hilos: 6
     datos: C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster
-s

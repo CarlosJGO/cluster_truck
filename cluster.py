@@ -20,22 +20,26 @@ import subprocess
 import sys
 from pathlib import Path
 
-# =====================  CONFIGURACION (editar)  =====================
-RED_LAN = "10.42.0.1/24"
-COORD_NAME = "linuxMint"        # nombre (clave de MAQUINAS) de la PC coordinadora
-PUERTO_SCHEDULER = 8786
-PUERTO_DASHBOARD = 8787
+import yaml
+
+# La configuración compartida se mantiene en cluster.yaml.
+RUTA_CONFIG = Path(__file__).with_name("cluster.yaml")
+with RUTA_CONFIG.open(encoding="utf-8") as archivo:
+    CONFIG = yaml.safe_load(archivo)
+
+if not isinstance(CONFIG, dict):
+    sys.exit(f"La configuración no es válida: {RUTA_CONFIG}")
+
+RED_LAN = CONFIG["red_lan"]
+COORD_NAME = CONFIG["coordinadora"]
+PUERTO_SCHEDULER = CONFIG["puerto_scheduler"]
+PUERTO_DASHBOARD = CONFIG["puerto_dashboard"]
 PUERTO_WORKER = 8789
 PUERTO_NANNY = 8790
 
-MAQUINAS = {
-    # nombre:        {ip, hilos, datos (ruta local de los datos en ESA PC)}
-    "linuxMint": {"ip": "10.42.0.4", "hilos": 1, "datos": "/home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos"},
-    "worker-1":  {"ip": "10.42.0.2", "hilos": 8, "datos": r"C:\Users\DELL\OneDrive\Documentos\Desktop\cluster_truck\datos"},
-    "worker-2":  {"ip": "192.168.1.12", "hilos": 6, "datos": r"C:\cluster\datos"},
-    "worker_rg": {"ip": "10.42.0.7", "hilos": 6, "datos": r"C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster"},
-}
-# ====================================================================
+MAQUINAS = CONFIG["maquinas"]
+if not isinstance(MAQUINAS, dict) or COORD_NAME not in MAQUINAS:
+    sys.exit("La configuración debe incluir 'maquinas' y la coordinadora indicada.")
 
 IP_COORD = MAQUINAS[COORD_NAME]["ip"]
 ES_WINDOWS = os.name == "nt"
