@@ -1,0 +1,22 @@
+red_lan: 10.42.0.1/24
+puerto_scheduler: 8786
+puerto_dashboard: 8787
+
+coordinadora: linuxMint          # nombre de la máquina que corre el scheduler
+
+maquinas:
+  linuxMint:
+    so: linux
+    ip: 10.42.0.4
+    hilos: 2
+    datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
+  worker-1:
+    so: windows
+    ip: 192.168.1.9
+    hilos: 4
+    datos: C:\cluster\datos
+  worker-2:
+    so: windows
+    ip: 192.168.1.12
+    hilos: 6
+    datos: C:\cluster\datos
