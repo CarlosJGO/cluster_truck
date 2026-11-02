@@ -14,7 +14,7 @@ maquinas:
     so: windows
     ip: 10.42.0.2
     hilos: 8
-    datos: C:\Users\DELL\OneDrive\Documentos\Desktop\Cluster1.03\cluster_truck\datos
+    datos: C:\Users\DELL\OneDrive\Documentos\Desktop\cluster_truck\datos
   worker-2:
     so: windows
     ip: 192.168.1.12
