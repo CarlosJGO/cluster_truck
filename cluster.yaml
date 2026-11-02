@@ -24,5 +24,4 @@ maquinas:
     so: windows
     ip: 10.42.0.7
     hilos: 6
-    datos: C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster
-s
+    datos: C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster\cluster_truck\datos
