@@ -1,0 +1,60 @@
+Eres mi asistente de configuración. Configura ESTA máquina (Linux Mint) como PC COORDINADORA de un clúster Dask.
+
+CONTEXTO
+- Repo actual: contiene la guía "Guía Dask: clúster con datos locales" y cluster.yaml con IPs, nombres, hilos y rutas de datos de cada máquina.
+- Sin NFS ni SMB: cada PC tiene los datos en su disco local; solo viajan nombres de archivo y resultados.
+- Mi nombre en cluster.yaml: <MI_NOMBRE>. Versión acordada de dask/distributed: <VERSION>.
+
+REGLAS
+- Lee primero cluster.yaml y la guía. Usa los valores de cluster.yaml, no inventes IPs ni nombres.
+- Antes de cualquier comando con sudo, muéstramelo y espera mi aprobación.
+- No pidas ni escribas contraseñas ni tokens. No toques nada fuera de lo necesario.
+- Comandos en una sola línea. Todo con el venv activado.
+- No ejecutes nada que abra puertos a internet: el firewall solo permite la red red_lan.
+
+TAREAS (en este orden, confirmando cada paso)
+1. Verifica mi IP (debe coincidir con cluster.yaml), conectividad y versión de Python.
+2. Crea el venv ~/venv-dask e instala dask[complete]==<VERSION>, distributed==<VERSION>, pandas y pyarrow.
+3. Crea la carpeta de datos indicada en cluster.yaml (si no existe) y define CLUSTER_DATOS.
+4. Revisa ufw: si está activo, abre 8786 y 8787 (scheduler y dashboard) y 8789:8790 (si también seré worker) solo para red_lan.
+5. Lanza el scheduler en una terminal propia con mi IP: dask scheduler --host <IP_COORD> --port 8786
+6. Si también seré worker, lanza mi worker en otra terminal con mi --name, --nthreads, --host, --worker-port 8789 y --nanny-port 8790, con CLUSTER_DATOS definida.
+7. Cuando los demás se conecten, ejecuta verificar.py y muéstrame: workers conectados, versiones, hostnames e inventario de datos (OK/DIFERENTE).
+
+AL TERMINAR
+- Resumen corto: qué instalaste, qué reglas de firewall abriste, qué comandos dejaste corriendo y cómo detenerlos.
+- Si algo falla, diagnostica con la sección "Solución de problemas" de la guía antes de proponer cambios.
+
+
+
+
+
+------------------------------------------------------------------------------------------------------
+
+Eres mi asistente de configuración. Configura ESTA máquina (Windows 11) como WORKER de un clúster Dask que ya tiene una coordinadora.
+
+CONTEXTO
+- Repo actual: contiene la guía "Guía Dask: clúster con datos locales" y cluster.yaml con IPs, nombres, hilos y rutas de datos de cada máquina.
+- Sin carpetas compartidas: los datos están (o estarán) en mi disco local. La coordinadora solo me manda nombres de archivo.
+- Mi nombre en cluster.yaml: <MI_NOMBRE>. Versión acordada de dask/distributed: <VERSION>.
+
+REGLAS
+- Lee primero cluster.yaml y la guía. Usa los valores de cluster.yaml, no inventes IPs ni nombres.
+- Antes de cualquier comando que requiera administrador, muéstramelo y espera mi aprobación.
+- No pidas ni escribas contraseñas. No cambies configuración que no sea necesaria.
+- El worker se lanza desde una terminal NORMAL (no administrador).
+- Comandos de PowerShell en una sola línea. Firewall solo para el perfil Privado y la red red_lan.
+
+TAREAS (en este orden, confirmando cada paso)
+1. Muestra mi IP con ipconfig y compárala con cluster.yaml. Comprueba con ping y Test-NetConnection -ComputerName <IP_COORD> -Port 8786 que veo a la coordinadora.
+2. Comprueba que mi red está en perfil Privado; si no, dime cómo cambiarlo (no lo cambies sin avisarme).
+3. Crea el venv $HOME\venv-dask, ejecuta Set-ExecutionPolicy -Scope CurrentUser RemoteSigned si hace falta, e instala dask[complete]==<VERSION>, distributed==<VERSION>, pandas y pyarrow.
+4. Comprueba que mi carpeta de datos (la de cluster.yaml) existe y cuenta los archivos .csv que contiene. Si está vacía, avísame: debo copiar los datos antes de continuar.
+5. Crea la regla de firewall (administrador, con mi aprobación): New-NetFirewallRule -DisplayName "Dask worker" -Direction Inbound -Protocol TCP -LocalPort 8789,8790 -RemoteAddress <RED_LAN> -Profile Private -Action Allow
+6. Con el venv activado y en una terminal normal, define $env:CLUSTER_DATOS con mi ruta y lanza:
+   dask worker tcp://<IP_COORD>:8786 --name <MI_NOMBRE> --nthreads <N_HILOS> --host <MI_IP> --worker-port 8789 --nanny-port 8790
+7. Confirma que el worker dice que se registró en el scheduler y avísame para que la coordinadora ejecute verificar.py.
+
+AL TERMINAR
+- Resumen corto: qué instalaste, qué regla de firewall creaste, el comando exacto con el que lancé el worker y cómo detenerlo (Ctrl + C).
+- Si algo falla, diagnostica con la sección "Solución de problemas" de la guía antes de proponer cambios.
