@@ -1,11 +1,11 @@
-red_lan: 10.133.231.0/24
+red_lan: 172.20.10.0/28
 puerto_scheduler: 8786
 puerto_dashboard: 8787
 coordinadora: linuxMint
 maquinas:
   linuxMint:
     so: linux
-    ip: 10.133.231.35
+    ip: 172.20.10.4
     hilos: 1
     datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
   worker-1:
