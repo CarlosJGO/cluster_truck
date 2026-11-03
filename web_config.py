@@ -5,26 +5,38 @@ import ipaddress
 import json
 import os
 import re
+import signal
+import socket
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
+import psutil
 
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "cluster.yaml"
 PAGE_PATH = ROOT / "web" / "index.html"
 PROCESS_PATH = ROOT / "procesar.py"
+CLUSTER_PATH = ROOT / "cluster.py"
 MAX_REQUEST_SIZE = 1_000_000
 CONFIG_LOCK = threading.Lock()
 PROCESS_LOCK = threading.Lock()
+CLUSTER_LOCK = threading.Lock()
+GIT_LOCK = threading.Lock()
 PROCESS_STATE = {
     "running": False,
     "returncode": None,
     "output": "",
+}
+CLUSTER_PROCESSES = {
+    role: {"process": None, "name": None, "running": False, "returncode": None, "output": ""}
+    for role in ("scheduler", "worker")
 }
 
 
@@ -92,6 +104,316 @@ def append_output(text):
         PROCESS_STATE["output"] = (PROCESS_STATE["output"] + text)[-30000:]
 
 
+def local_ip_for(config):
+    coordinator = config["maquinas"][config["coordinadora"]]
+    connection = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        connection.connect((coordinator["ip"], config["puerto_scheduler"]))
+        return connection.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        connection.close()
+
+
+def detect_network(config):
+    local_ip = local_ip_for(config)
+    if not local_ip:
+        raise ValueError("No se pudo detectar una IP local para llegar a la coordinadora.")
+
+    for interface, addresses in psutil.net_if_addrs().items():
+        for address in addresses:
+            if address.family != socket.AF_INET or address.address != local_ip:
+                continue
+            if not address.netmask:
+                raise ValueError(f"No se encontró la máscara de red de la interfaz {interface}.")
+            network = ipaddress.ip_interface(f"{local_ip}/{address.netmask}").network
+            matching_machines = [
+                name for name, machine in config["maquinas"].items()
+                if machine["ip"] == local_ip
+            ]
+            return {
+                "ip": local_ip,
+                "red_lan": network.with_prefixlen,
+                "interfaz": interface,
+                "nodos_coincidentes": matching_machines,
+                "advertencia": (
+                    "La máscara /32 identifica solo esta IP; confirma que esta interfaz pertenece a la red compartida."
+                    if network.prefixlen == 32 else None
+                ),
+            }
+    raise ValueError(f"La IP detectada {local_ip} no coincide con una interfaz IPv4 local con máscara.")
+
+
+def apply_detected_network(machine_name, role, expected_ip, expected_network, config):
+    if not isinstance(machine_name, str) or machine_name not in config["maquinas"]:
+        raise ValueError("Selecciona la máquina que representa este equipo.")
+    expected_role = "coordinadora" if machine_name == config["coordinadora"] else "worker"
+    if role != expected_role:
+        raise ValueError(f"El nodo seleccionado está configurado como {expected_role}.")
+
+    detection = detect_network(config)
+    if detection["ip"] != expected_ip or detection["red_lan"] != expected_network:
+        raise ValueError("La red cambió desde la última verificación. Vuelve a verificar antes de aplicar.")
+    matching_machines = detection["nodos_coincidentes"]
+    if len(matching_machines) > 1:
+        raise ValueError(
+            f"La IP actual ya está duplicada entre estos nodos: {', '.join(matching_machines)}. Resuelve la identidad antes de actualizar."
+        )
+    if matching_machines and machine_name not in matching_machines:
+        raise ValueError(
+            f"La IP actual coincide con {matching_machines[0]}, no con {machine_name}. Selecciona el nodo detectado."
+        )
+
+    config["maquinas"][machine_name]["ip"] = detection["ip"]
+    config["red_lan"] = detection["red_lan"]
+    save_config(config)
+    return {"ok": True, "config": config, "detection": detection, "role": expected_role}
+
+
+def append_cluster_output(role, text):
+    with CLUSTER_LOCK:
+        state = CLUSTER_PROCESSES[role]
+        state["output"] = (state["output"] + text)[-12000:]
+
+
+def monitor_cluster_process(role, process):
+    with process.stdout:
+        for line in process.stdout:
+            append_cluster_output(role, line)
+    returncode = process.wait()
+    with CLUSTER_LOCK:
+        state = CLUSTER_PROCESSES[role]
+        if state["process"] is process:
+            state.update(running=False, returncode=returncode)
+
+
+def start_cluster_process(role, machine_name, config):
+    if not isinstance(role, str) or role not in CLUSTER_PROCESSES:
+        raise ValueError("El proceso debe ser scheduler o worker.")
+    if not isinstance(machine_name, str) or machine_name not in config["maquinas"]:
+        raise ValueError("Selecciona una máquina válida.")
+    if role == "scheduler" and machine_name != config["coordinadora"]:
+        raise ValueError("El scheduler solo puede iniciarse en la máquina coordinadora.")
+
+    with CLUSTER_LOCK:
+        state = CLUSTER_PROCESSES[role]
+        process = state["process"]
+        if process is not None and process.poll() is None:
+            raise RuntimeError(f"El proceso {role} ya está activo.")
+        environment = os.environ.copy()
+        environment["PYTHONUNBUFFERED"] = "1"
+        command = [sys.executable, str(CLUSTER_PATH), role]
+        if role == "worker":
+            command.append(machine_name)
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            start_new_session=os.name != "nt",
+        )
+        state.update(
+            process=process,
+            name=machine_name,
+            running=True,
+            returncode=None,
+            output=f"Iniciando {role} para {machine_name}...\n",
+        )
+    threading.Thread(target=monitor_cluster_process, args=(role, process), daemon=True).start()
+    return {"ok": True, "message": f"{role.capitalize()} iniciado para {machine_name}."}
+
+
+def stop_cluster_process(role):
+    if not isinstance(role, str):
+        raise ValueError("El proceso debe ser scheduler o worker.")
+    with CLUSTER_LOCK:
+        state = CLUSTER_PROCESSES.get(role)
+        process = state["process"] if state else None
+        if process is None or process.poll() is not None:
+            raise RuntimeError(f"No hay un proceso {role} activo.")
+
+    try:
+        if os.name == "nt":
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
+    except (OSError, ValueError):
+        process.terminate()
+    try:
+        process.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            process.kill()
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except OSError:
+                process.kill()
+    return {"ok": True, "message": f"Proceso {role} detenido."}
+
+
+def cluster_snapshot(config):
+    local_ip = local_ip_for(config)
+    detected_node = next(
+        (name for name, machine in config["maquinas"].items() if machine["ip"] == local_ip),
+        None,
+    )
+    with CLUSTER_LOCK:
+        processes = {}
+        for role, state in CLUSTER_PROCESSES.items():
+            process = state["process"]
+            running = process is not None and process.poll() is None
+            state["running"] = running
+            if not running and process is not None:
+                state["returncode"] = process.returncode
+            processes[role] = {
+                "running": running,
+                "name": state["name"],
+                "returncode": state["returncode"],
+                "output": state["output"],
+            }
+
+    configured_threads = sum(machine["hilos"] for machine in config["maquinas"].values())
+    cluster = {
+        "connected": False,
+        "workers": [],
+        "worker_count": 0,
+        "active_threads": 0,
+        "memory_limit": 0,
+        "error": None,
+    }
+    try:
+        from distributed import Client
+
+        address = f"tcp://{config['maquinas'][config['coordinadora']]['ip']}:{config['puerto_scheduler']}"
+        client = Client(address, timeout="2s", set_as_default=False)
+        try:
+            workers = client.scheduler_info().get("workers", {})
+            cluster["workers"] = [
+                {
+                    "name": worker.get("name", address),
+                    "nthreads": worker.get("nthreads", 0),
+                    "memory_limit": worker.get("memory_limit", 0),
+                }
+                for address, worker in workers.items()
+            ]
+            cluster["connected"] = True
+            cluster["worker_count"] = len(workers)
+            cluster["active_threads"] = sum(worker["nthreads"] for worker in cluster["workers"])
+            cluster["memory_limit"] = sum(worker["memory_limit"] for worker in cluster["workers"])
+        finally:
+            client.close()
+    except Exception as error:
+        cluster["error"] = str(error)
+
+    return {
+        "detected_ip": local_ip,
+        "detected_node": detected_node,
+        "processes": processes,
+        "capacity": {
+            "machine_count": len(config["maquinas"]),
+            "configured_threads": configured_threads,
+        },
+        "cluster": cluster,
+    }
+
+
+def run_git(*arguments, timeout=20):
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment["GCM_INTERACTIVE"] = "Never"
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        check=False,
+    )
+
+
+def git_snapshot(fetch_error=None):
+    branch = run_git("branch", "--show-current")
+    if branch.returncode:
+        raise RuntimeError(branch.stderr.strip() or "No se pudo consultar el repositorio Git.")
+    status = run_git("status", "--porcelain")
+    upstream = run_git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    ahead = behind = 0
+    if upstream.returncode == 0:
+        counts = run_git("rev-list", "--left-right", "--count", f"HEAD...{upstream.stdout.strip()}")
+        if counts.returncode == 0:
+            ahead, behind = (int(value) for value in counts.stdout.split())
+    return {
+        "branch": branch.stdout.strip(),
+        "dirty": bool(status.stdout.strip()),
+        "changes": [line[3:] for line in status.stdout.splitlines()],
+        "ahead": ahead,
+        "behind": behind,
+        "has_upstream": upstream.returncode == 0,
+        "fetch_error": fetch_error,
+    }
+
+
+def check_git_updates():
+    with GIT_LOCK:
+        remote = run_git("remote", "get-url", "origin")
+        if remote.returncode:
+            return git_snapshot(remote.stderr.strip() or "No hay un remoto origin configurado.")
+        fetch = run_git("fetch", "--quiet", "origin", timeout=30)
+        return git_snapshot(fetch.stderr.strip() if fetch.returncode else None)
+
+
+def sync_git_config():
+    with GIT_LOCK:
+        add = run_git("add", "--", "cluster.yaml")
+        if add.returncode:
+            raise RuntimeError(add.stderr.strip() or "No se pudo preparar cluster.yaml.")
+        staged = run_git("diff", "--cached", "--quiet", "--", "cluster.yaml")
+        if staged.returncode == 1:
+            commit = run_git("commit", "--only", "-m", "Actualizar configuración del clúster", "--", "cluster.yaml")
+            if commit.returncode:
+                raise RuntimeError(commit.stderr.strip() or "No se pudo crear el commit de cluster.yaml.")
+        elif staged.returncode != 0:
+            raise RuntimeError("No se pudo comprobar el estado de cluster.yaml.")
+
+        branch = run_git("branch", "--show-current")
+        if branch.returncode or not branch.stdout.strip():
+            raise RuntimeError("No se pudo determinar la rama actual.")
+        push = run_git("push", "-u", "origin", branch.stdout.strip(), timeout=45)
+        if push.returncode:
+            raise RuntimeError(push.stderr.strip() or "No se pudo publicar los cambios en GitHub.")
+        return git_snapshot()
+
+
+def pull_git_updates(stash_changes=False):
+    with GIT_LOCK:
+        changes = run_git("diff", "--quiet", "HEAD", "--")
+        if changes.returncode not in (0, 1):
+            raise RuntimeError("No se pudo comprobar si hay cambios locales.")
+        if changes.returncode == 1:
+            if not stash_changes:
+                return {"needs_stash": True, "status": git_snapshot()}
+            stash = run_git("stash", "push", "-m", f"cluster-web pre-pull {int(time.time())}")
+            if stash.returncode:
+                raise RuntimeError(stash.stderr.strip() or "No se pudieron guardar los cambios locales.")
+
+        pull = run_git("pull", "--ff-only", timeout=45)
+        if pull.returncode:
+            raise RuntimeError(pull.stderr.strip() or "No se pudieron traer los cambios. La rama puede requerir resolución manual.")
+        return {"needs_stash": False, "status": git_snapshot()}
+
+
 def run_processing(data_path, scheduler_address):
     environment = os.environ.copy()
     environment["CLUSTER_DATOS"] = data_path
@@ -124,6 +446,21 @@ def run_processing(data_path, scheduler_address):
 
 
 class RequestHandler(BaseHTTPRequestHandler):
+    def has_local_origin(self):
+        host = urlsplit(f"//{self.headers.get('Host', '')}").hostname
+        if host not in ("127.0.0.1", "localhost"):
+            return False
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        parsed_origin = urlsplit(origin)
+        origin_port = parsed_origin.port or 80
+        return (
+            parsed_origin.scheme == "http"
+            and parsed_origin.hostname in ("127.0.0.1", "localhost")
+            and origin_port == self.server.server_port
+        )
+
     def send_json(self, status, value):
         body = json.dumps(value, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -158,6 +495,26 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json(200, load_config())
             except (OSError, ValueError, yaml.YAMLError) as error:
                 self.send_json(500, {"error": str(error)})
+        elif self.path == "/api/cluster/status":
+            try:
+                self.send_json(200, cluster_snapshot(load_config()))
+            except (OSError, ValueError, yaml.YAMLError) as error:
+                self.send_json(500, {"error": str(error)})
+        elif self.path == "/api/network/detect":
+            try:
+                config = load_config()
+                detection = detect_network(config)
+                detection["coordinadora"] = config["coordinadora"]
+                detection["nodo_detectado"] = detection["nodos_coincidentes"][0] if len(detection["nodos_coincidentes"]) == 1 else None
+                self.send_json(200, detection)
+            except (OSError, ValueError, yaml.YAMLError) as error:
+                self.send_json(400, {"error": str(error)})
+        elif self.path == "/api/git/status":
+            try:
+                with GIT_LOCK:
+                    self.send_json(200, git_snapshot())
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                self.send_json(500, {"error": str(error)})
         elif self.path == "/api/process/status":
             with PROCESS_LOCK:
                 self.send_json(200, dict(PROCESS_STATE))
@@ -165,6 +522,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "Ruta no encontrada."})
 
     def do_PUT(self):
+        if not self.has_local_origin():
+            self.send_json(403, {"error": "Solo se aceptan cambios desde la interfaz local."})
+            return
         if self.path != "/api/config":
             self.send_json(404, {"error": "Ruta no encontrada."})
             return
@@ -177,6 +537,79 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True, "message": "Configuración guardada en cluster.yaml."})
 
     def do_POST(self):
+        if not self.has_local_origin():
+            self.send_json(403, {"error": "Solo se aceptan cambios desde la interfaz local."})
+            return
+        if self.path == "/api/network/apply":
+            try:
+                request_data = self.read_json()
+                if not isinstance(request_data, dict):
+                    raise ValueError("La solicitud debe indicar el nodo y su rol.")
+                result = apply_detected_network(
+                    request_data.get("machine"),
+                    request_data.get("role"),
+                    request_data.get("expected_ip"),
+                    request_data.get("expected_network"),
+                    load_config(),
+                )
+            except (OSError, ValueError, yaml.YAMLError) as error:
+                self.send_json(400, {"error": str(error)})
+                return
+            self.send_json(200, result)
+            return
+        if self.path == "/api/cluster/start":
+            try:
+                request_data = self.read_json()
+                if not isinstance(request_data, dict):
+                    raise ValueError("La solicitud debe indicar el rol y la máquina local.")
+                result = start_cluster_process(
+                    request_data.get("role"), request_data.get("machine"), load_config()
+                )
+            except RuntimeError as error:
+                self.send_json(409, {"error": str(error)})
+                return
+            except (OSError, ValueError, yaml.YAMLError) as error:
+                self.send_json(400, {"error": str(error)})
+                return
+            self.send_json(202, result)
+            return
+        if self.path == "/api/cluster/stop":
+            try:
+                request_data = self.read_json()
+                if not isinstance(request_data, dict):
+                    raise ValueError("La solicitud debe indicar el proceso que se detendrá.")
+                result = stop_cluster_process(request_data.get("role"))
+            except RuntimeError as error:
+                self.send_json(409, {"error": str(error)})
+                return
+            except ValueError as error:
+                self.send_json(400, {"error": str(error)})
+                return
+            self.send_json(200, result)
+            return
+        if self.path == "/api/git/check":
+            try:
+                self.send_json(200, check_git_updates())
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                self.send_json(502, {"error": str(error)})
+            return
+        if self.path == "/api/git/sync":
+            try:
+                self.send_json(200, {"ok": True, "status": sync_git_config()})
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                self.send_json(409, {"error": str(error)})
+            return
+        if self.path == "/api/git/pull":
+            try:
+                request_data = self.read_json()
+                if not isinstance(request_data, dict):
+                    raise ValueError("La solicitud debe indicar si se guardan los cambios locales.")
+                result = pull_git_updates(bool(request_data.get("stash_changes")))
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                self.send_json(409, {"error": str(error)})
+                return
+            self.send_json(409 if result["needs_stash"] else 200, result)
+            return
         if self.path != "/api/process":
             self.send_json(404, {"error": "Ruta no encontrada."})
             return

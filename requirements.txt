@@ -3,3 +3,4 @@ distributed==2026.8.0
 pandas==3.1.0
 bokeh>=3.1.0
 PyYAML==6.0.3
+psutil>=5.9

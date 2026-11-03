@@ -3,6 +3,7 @@
 cluster.py: un solo archivo para levantar el cluster Dask (Linux y Windows).
 
 USO (con el entorno virtual activado):
+    python web_config.py                 # interfaz local para configurar y controlar procesos
     python cluster.py scheduler            # en la PC coordinadora
     python cluster.py worker               # en cada worker (detecta su nombre por IP)
     python cluster.py worker worker-ana    # o indicando el nombre a mano

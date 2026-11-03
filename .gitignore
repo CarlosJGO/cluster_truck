@@ -1,1 +1,14 @@
 .venv/
+.venv-py312/
+.venv314/
+__pycache__/
+*.py[cod]
+# Entornos virtuales
+.venv/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+
+# Enlace al entorno virtual
+/.venv

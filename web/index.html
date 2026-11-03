@@ -84,6 +84,28 @@
     .process-controls .field { min-width: 220px; }
     .data-hint { color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
     .data-hint strong { color: #c9d8ea; }
+    .machine-controls { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 18px; align-items: end; }
+    .machine-controls .actions { flex-wrap: wrap; }
+    .machine-detection { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .machine-role { margin: 8px 0 0; color: var(--green); font-size: 13px; font-weight: 700; }
+    .network-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .network-detection { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+    .network-detection.warning { color: #ffd18a; }
+    .runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .runtime-item { min-width: 0; padding: 14px; border: 1px solid #263449; border-radius: 10px; background: #0a111c; }
+    .runtime-item strong { display: block; margin-bottom: 5px; font-size: 13px; }
+    .runtime-item span { color: var(--muted); font-size: 12px; }
+    .runtime-log { max-height: 120px; min-height: 0; margin-top: 10px; padding: 10px; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+    .metric { min-width: 0; padding: 14px 0; border-top: 2px solid #235165; }
+    .metric strong { display: block; color: var(--blue); font-size: 24px; font-variant-numeric: tabular-nums; }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .worker-list { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .worker-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); color: #c9d8ea; font-size: 13px; }
+    .git-summary { color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+    .git-summary strong { color: #c9d8ea; }
+    .git-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    #pull-github[hidden] { display: none; }
     .log {
       margin-top: 16px; min-height: 120px; max-height: 310px; overflow: auto; padding: 15px;
       border: 1px solid #1e2d40; border-radius: 10px; color: #b7c8dc; background: #05090f;
@@ -94,6 +116,7 @@
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .node-grid .field:last-child { grid-column: span 2; }
+      .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 560px) {
       .shell { width: min(100% - 24px, 1120px); padding-top: 22px; }
@@ -103,6 +126,8 @@
       .grid, .node-grid { grid-template-columns: 1fr; }
       .field.wide, .node-grid .field:last-child { grid-column: auto; }
       .section-head, .config-actions { align-items: flex-start; flex-direction: column; }
+      .machine-controls, .runtime-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .process-layout { grid-template-columns: 1fr; }
       .process-controls { flex-direction: column; align-items: stretch; }
       .process-layout button { width: 100%; }
@@ -143,6 +168,63 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <h2>Esta máquina</h2>
+            <p class="section-note">La detección usa la IP local; si no coincide, asigna manualmente el nodo que representa este equipo.</p>
+          </div>
+        </div>
+        <div class="machine-controls">
+          <div class="field">
+            <label for="current-machine">Nodo representado por este equipo</label>
+            <select id="current-machine"></select>
+          </div>
+          <div class="actions">
+            <button id="start-scheduler" class="primary" type="button">▶ Iniciar coordinadora</button>
+            <button id="stop-scheduler" type="button" disabled>■ Detener coordinadora</button>
+            <button id="start-worker" class="primary" type="button">▶ Iniciar worker</button>
+            <button id="stop-worker" type="button" disabled>■ Detener worker</button>
+          </div>
+        </div>
+        <p id="machine-detection" class="machine-detection" aria-live="polite">Detectando este equipo…</p>
+        <p id="machine-role" class="machine-role" aria-live="polite">Rol sin verificar.</p>
+        <div class="network-actions">
+          <button id="verify-network" type="button">↻ Reverificar IP y red</button>
+          <button id="apply-network" class="primary" type="button" disabled>Actualizar IP y red en YAML</button>
+        </div>
+        <p id="network-detection" class="network-detection" role="status">Verifica la interfaz de red para obtener su IP y máscara.</p>
+        <div class="runtime-grid">
+          <div class="runtime-item">
+            <strong>Scheduler</strong>
+            <span id="scheduler-state">Consultando estado…</span>
+            <pre id="scheduler-log" class="log runtime-log" aria-live="polite"></pre>
+          </div>
+          <div class="runtime-item">
+            <strong>Worker local</strong>
+            <span id="worker-state">Consultando estado…</span>
+            <pre id="worker-log" class="log runtime-log" aria-live="polite"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Capacidad del clúster</h2>
+            <p id="cluster-summary" class="section-note">Consultando scheduler…</p>
+          </div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><strong id="metric-machines">—</strong><span>Máquinas configuradas</span></div>
+          <div class="metric"><strong id="metric-configured-threads">—</strong><span>Hilos configurados</span></div>
+          <div class="metric"><strong id="metric-workers">—</strong><span>Workers conectados</span></div>
+          <div class="metric"><strong id="metric-active-threads">—</strong><span>Hilos activos</span></div>
+          <div class="metric"><strong id="metric-memory">—</strong><span>Memoria anunciada</span></div>
+        </div>
+        <ul id="worker-list" class="worker-list"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <h2>Nodos del clúster</h2>
             <p class="section-note">Define nombre, sistema, dirección IP, hilos y ruta local de datos.</p>
           </div>
@@ -152,6 +234,21 @@
         <div class="config-actions">
           <span id="save-status" class="status" role="status">Cargando configuración…</span>
           <button id="save-config" class="primary" type="button">Guardar configuración</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>GitHub</h2>
+            <p class="section-note">Publica solo <code>cluster.yaml</code>; los cambios remotos se consultan cada minuto mientras esta página está abierta.</p>
+          </div>
+        </div>
+        <p id="git-status" class="git-summary" role="status">Consultando repositorio…</p>
+        <div class="git-actions">
+          <button id="sync-github" class="primary" type="button">↑ Sincronizar configuración</button>
+          <button id="check-github" type="button">↻ Revisar GitHub ahora</button>
+          <button id="pull-github" type="button" hidden>↓ Traer cambios</button>
         </div>
       </section>
 
@@ -183,6 +280,12 @@
     let config = null;
     let sourceNode = null;
     let pollTimer = null;
+    let clusterTimer = null;
+    let gitTimer = null;
+    let runtimeStatus = null;
+    let selectedMachine = null;
+    let machineManuallySelected = false;
+    let networkSnapshot = null;
 
     function setStatus(message, kind = "") {
       const status = byId("save-status");
@@ -193,7 +296,11 @@
     async function request(url, options = {}) {
       const response = await fetch(url, options);
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "La solicitud no se pudo completar.");
+      if (!response.ok) {
+        const error = new Error(result.error || "La solicitud no se pudo completar.");
+        Object.assign(error, result);
+        throw error;
+      }
       return result;
     }
 
@@ -219,6 +326,35 @@
       sourceNode = config.maquinas[selectedSource] ? selectedSource : Object.keys(config.maquinas)[0];
       sourceSelect.value = sourceNode;
       updateProcessHint();
+      renderMachineOptions();
+    }
+
+    function renderMachineOptions() {
+      const select = byId("current-machine");
+      if (!select || !config) return;
+      const names = Object.keys(config.maquinas);
+      select.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Selecciona una máquina";
+      select.append(placeholder);
+      names.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = `${name} · ${name === config.coordinadora ? "Coordinadora" : "Worker"}`;
+        select.append(option);
+      });
+      const detected = runtimeStatus?.detected_node;
+      const remembered = localStorage.getItem("cluster-machine");
+      if (!machineManuallySelected) {
+        selectedMachine = config.maquinas[detected]
+          ? detected
+          : config.maquinas[remembered] ? remembered : null;
+      } else if (!config.maquinas[selectedMachine]) {
+        selectedMachine = null;
+      }
+      select.value = selectedMachine || "";
+      updateMachineControls();
     }
 
     function updateProcessHint() {
@@ -228,6 +364,259 @@
       byId("process-hint").innerHTML = machine
         ? `Scheduler: <strong>${escapeHtml(name)}</strong> · ${escapeHtml(machine.ip)}:${escapeHtml(String(byId("puerto_scheduler").value))}<br>CSV de <strong>${escapeHtml(byId("source_node").value)}</strong>: ${escapeHtml(source?.datos || "")}`
         : "Agrega al menos un nodo y selecciónalo como coordinador.";
+    }
+
+    function updateMachineControls() {
+      const processes = runtimeStatus?.processes || {};
+      const isCoordinator = selectedMachine === byId("coordinadora").value;
+      byId("start-scheduler").disabled = !isCoordinator || Boolean(processes.scheduler?.running);
+      byId("stop-scheduler").disabled = !processes.scheduler?.running;
+      byId("start-worker").disabled = !selectedMachine || Boolean(processes.worker?.running);
+      byId("stop-worker").disabled = !processes.worker?.running;
+      byId("machine-role").textContent = selectedMachine
+        ? `Identidad seleccionada: ${selectedMachine} · rol ${isCoordinator ? "COORDINADORA" : "WORKER"}.`
+        : "Rol sin verificar: selecciona la máquina que representa este equipo.";
+      const matches = networkSnapshot?.nodos_coincidentes || [];
+      const identityConflict = matches.length > 1 || (matches.length === 1 && matches[0] !== selectedMachine);
+      byId("apply-network").disabled = !networkSnapshot || !selectedMachine || identityConflict;
+    }
+
+    function renderNetwork(snapshot) {
+      networkSnapshot = snapshot;
+      const matches = snapshot.nodos_coincidentes || [];
+      let identity = "La IP no coincide con ningún nodo; confirma manualmente la máquina seleccionada.";
+      if (matches.length === 1) {
+        identity = matches[0] === selectedMachine
+          ? `IP verificada para ${matches[0]}.`
+          : `Conflicto: la IP corresponde a ${matches[0]}, no a ${selectedMachine || "una máquina seleccionada"}.`;
+      } else if (matches.length > 1) {
+        identity = `Conflicto: IP duplicada en ${matches.join(", ")}.`;
+      }
+      const details = `Interfaz ${snapshot.interfaz} · IP ${snapshot.ip} · red ${snapshot.red_lan}. ${identity}`;
+      byId("network-detection").textContent = snapshot.advertencia
+        ? `${details} ${snapshot.advertencia}`
+        : details;
+      byId("network-detection").className = `network-detection ${snapshot.advertencia || matches.length > 1 ? "warning" : ""}`;
+      updateMachineControls();
+    }
+
+    async function verifyNetwork() {
+      byId("verify-network").disabled = true;
+      try {
+        renderNetwork(await request("/api/network/detect"));
+      } catch (error) {
+        networkSnapshot = null;
+        byId("network-detection").textContent = error.message;
+        byId("network-detection").className = "network-detection warning";
+        updateMachineControls();
+      } finally {
+        byId("verify-network").disabled = false;
+      }
+    }
+
+    async function applyDetectedNetwork() {
+      if (!selectedMachine || !networkSnapshot) {
+        setStatus("Verifica la red y selecciona primero la máquina y su rol.", "error");
+        return;
+      }
+      let draft;
+      try {
+        draft = collectDraft();
+      } catch (error) {
+        setStatus(error.message, "error");
+        return;
+      }
+      const machine = selectedMachine;
+      if (!draft.maquinas[machine]) {
+        setStatus("La máquina seleccionada ya no está en la configuración.", "error");
+        return;
+      }
+      const role = machine === draft.coordinadora ? "coordinadora" : "worker";
+      const warning = networkSnapshot.advertencia ? `\n\nAdvertencia: ${networkSnapshot.advertencia}` : "";
+      const message = `Se actualizará ${machine} (${role}) a ${networkSnapshot.ip} y la red compartida a ${networkSnapshot.red_lan}.\n\nLa red se aplica a todo el clúster. ¿Confirmas que esta PC es ${role}?${warning}`;
+      if (!window.confirm(message)) return;
+      if (!await saveConfig()) return;
+
+      byId("apply-network").disabled = true;
+      try {
+        const result = await request("/api/network/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            machine,
+            role,
+            expected_ip: networkSnapshot.ip,
+            expected_network: networkSnapshot.red_lan
+          })
+        });
+        config = result.config;
+        byId("red_lan").value = config.red_lan;
+        renderNodes();
+        await verifyNetwork();
+        setStatus(`IP de ${machine} y red ${config.red_lan} actualizadas. Sincronízalas con GitHub para compartirlas.`, "ok");
+      } catch (error) {
+        setStatus(error.message, "error");
+        await verifyNetwork();
+      } finally {
+        updateMachineControls();
+      }
+    }
+
+    function renderCluster(snapshot) {
+      runtimeStatus = snapshot;
+      if (!machineManuallySelected && snapshot.detected_node && config.maquinas[snapshot.detected_node]) {
+        selectedMachine = snapshot.detected_node;
+      }
+      renderMachineOptions();
+      const detected = snapshot.detected_node
+        ? `coincide con «${snapshot.detected_node}»`
+        : "no coincide con ningún nodo configurado; selecciona uno o agrega un nodo";
+      byId("machine-detection").textContent = `IP local detectada: ${snapshot.detected_ip || "no disponible"}; ${detected}.`;
+
+      for (const role of ["scheduler", "worker"]) {
+        const state = snapshot.processes[role];
+        const label = role === "scheduler" ? "scheduler" : `worker ${state.name || selectedMachine || "local"}`;
+        byId(`${role}-state`).textContent = state.running
+          ? `Activo: ${label}`
+          : state.returncode === null ? "No iniciado desde esta interfaz." : `Finalizó con código ${state.returncode}.`;
+        byId(`${role}-log`).textContent = state.output || "";
+      }
+
+      const cluster = snapshot.cluster;
+      byId("metric-machines").textContent = snapshot.capacity.machine_count;
+      byId("metric-configured-threads").textContent = snapshot.capacity.configured_threads;
+      byId("metric-workers").textContent = cluster.worker_count;
+      byId("metric-active-threads").textContent = cluster.active_threads;
+      byId("metric-memory").textContent = formatBytes(cluster.memory_limit);
+      byId("cluster-summary").textContent = cluster.connected
+        ? "Scheduler conectado. Capacidades activas reportadas por los workers."
+        : `Scheduler sin conexión${cluster.error ? `: ${cluster.error}` : "."}`;
+      const workers = byId("worker-list");
+      workers.replaceChildren();
+      cluster.workers.forEach((worker) => {
+        const item = document.createElement("li");
+        const name = document.createElement("strong");
+        name.textContent = worker.name;
+        const details = document.createElement("span");
+        details.textContent = `${worker.nthreads} hilos · ${formatBytes(worker.memory_limit)}`;
+        item.append(name, details);
+        workers.append(item);
+      });
+    }
+
+    function formatBytes(value) {
+      if (!value) return "—";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = value;
+      let unit = 0;
+      while (size >= 1024 && unit < units.length - 1) {
+        size /= 1024;
+        unit += 1;
+      }
+      return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    }
+
+    async function pollCluster() {
+      window.clearTimeout(clusterTimer);
+      try {
+        renderCluster(await request("/api/cluster/status"));
+      } catch (error) {
+        byId("cluster-summary").textContent = error.message;
+      } finally {
+        clusterTimer = window.setTimeout(pollCluster, 3000);
+      }
+    }
+
+    async function clusterAction(action, role) {
+      if (action === "start" && !selectedMachine) {
+        setStatus("Selecciona la máquina que representa este equipo.", "error");
+        return;
+      }
+      if (action === "start" && !await saveConfig()) return;
+      updateMachineControls();
+      try {
+        await request(`/api/cluster/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role, machine: selectedMachine })
+        });
+        setStatus(`${role === "scheduler" ? "Coordinadora" : "Worker"}: acción enviada.`, "ok");
+        await pollCluster();
+      } catch (error) {
+        setStatus(error.message, "error");
+        await pollCluster();
+      }
+    }
+
+    function renderGitStatus(status) {
+      const details = [`Rama ${status.branch || "desconocida"}`];
+      if (status.ahead) details.push(`${status.ahead} commit(s) por publicar`);
+      if (status.behind) details.push(`${status.behind} cambio(s) disponible(s)`);
+      if (status.dirty) details.push(`${status.changes.length} archivo(s) con cambios locales`);
+      if (!status.has_upstream) details.push("sin rama remota asociada");
+      if (status.fetch_error) details.push(`revisión remota: ${status.fetch_error}`);
+      byId("git-status").textContent = details.join(" · ");
+      byId("pull-github").hidden = !status.behind;
+    }
+
+    async function checkGitUpdates(showMessage = false) {
+      window.clearTimeout(gitTimer);
+      try {
+        const status = await request("/api/git/check", { method: "POST" });
+        renderGitStatus(status);
+        if (showMessage) setStatus("Estado de GitHub actualizado.", "ok");
+      } catch (error) {
+        byId("git-status").textContent = error.message;
+        if (showMessage) setStatus(error.message, "error");
+      } finally {
+        gitTimer = window.setTimeout(() => checkGitUpdates(), 60000);
+      }
+    }
+
+    async function syncGitHub() {
+      byId("sync-github").disabled = true;
+      try {
+        const result = await request("/api/git/sync", { method: "POST" });
+        renderGitStatus(result.status);
+        setStatus("Configuración publicada en GitHub.", "ok");
+      } catch (error) {
+        setStatus(`${error.message} Revisa si hay cambios remotos antes de volver a publicar.`, "error");
+        checkGitUpdates();
+      } finally {
+        byId("sync-github").disabled = false;
+      }
+    }
+
+    async function pullGitHub(stashChanges = false) {
+      try {
+        const result = await request("/api/git/pull", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stash_changes: stashChanges })
+        });
+        renderGitStatus(result.status);
+        config = await request("/api/config");
+        byId("red_lan").value = config.red_lan;
+        byId("puerto_scheduler").value = config.puerto_scheduler;
+        byId("puerto_dashboard").value = config.puerto_dashboard;
+        renderNodes();
+        setStatus(stashChanges
+          ? "Cambios remotos aplicados. Los cambios locales quedaron guardados en git stash."
+          : "Cambios remotos aplicados.", "ok");
+      } catch (error) {
+        if (error.needs_stash) {
+          const confirmStash = window.confirm(
+            "Hay cambios locales sin commit. ¿Guardarlos con git stash y traer los cambios remotos? El stash quedará guardado y no se aplicará automáticamente."
+          );
+          if (confirmStash) {
+            await pullGitHub(true);
+          } else {
+            setStatus("Pull cancelado; los cambios locales no se modificaron.");
+          }
+          return;
+        }
+        setStatus(error.message, "error");
+      }
     }
 
     function escapeHtml(value) {
@@ -331,6 +720,8 @@
       let suffix = 2;
       while (Object.hasOwn(config.maquinas, name)) name = `${base}-${suffix++}`;
       config.maquinas[name] = { so: "windows", ip: "", hilos: 4, datos: "" };
+      selectedMachine = name;
+      machineManuallySelected = true;
       renderNodes();
       const card = [...document.querySelectorAll(".node")].find((item) => item.querySelector('[data-field="name"]').value === name);
       card?.querySelector('[data-field="name"]').focus();
@@ -350,6 +741,7 @@
       }
       delete config.maquinas[name];
       if (config.coordinadora === name) config.coordinadora = Object.keys(config.maquinas)[0];
+      if (selectedMachine === name) selectedMachine = config.coordinadora;
       renderNodes();
       setStatus(`Nodo ${name} eliminado del formulario; guarda para aplicar el cambio.`);
     }
@@ -400,6 +792,9 @@
         renderNodes();
         setStatus("Configuración cargada.", "ok");
         pollProcess();
+        pollCluster();
+        verifyNetwork();
+        checkGitUpdates();
       } catch (error) {
         setStatus(error.message, "error");
       }
@@ -408,12 +803,32 @@
     byId("add-node").addEventListener("click", addNode);
     byId("save-config").addEventListener("click", saveConfig);
     byId("run-process").addEventListener("click", runProcess);
-    byId("coordinadora").addEventListener("change", updateProcessHint);
+    byId("start-scheduler").addEventListener("click", () => clusterAction("start", "scheduler"));
+    byId("stop-scheduler").addEventListener("click", () => clusterAction("stop", "scheduler"));
+    byId("start-worker").addEventListener("click", () => clusterAction("start", "worker"));
+    byId("stop-worker").addEventListener("click", () => clusterAction("stop", "worker"));
+    byId("current-machine").addEventListener("change", (event) => {
+      selectedMachine = event.target.value;
+      machineManuallySelected = true;
+      localStorage.setItem("cluster-machine", selectedMachine);
+      updateMachineControls();
+      if (networkSnapshot) renderNetwork(networkSnapshot);
+    });
+    byId("coordinadora").addEventListener("change", () => {
+      updateProcessHint();
+      updateMachineControls();
+      if (networkSnapshot) renderNetwork(networkSnapshot);
+    });
     byId("source_node").addEventListener("change", (event) => {
       sourceNode = event.target.value;
       updateProcessHint();
     });
     byId("puerto_scheduler").addEventListener("input", updateProcessHint);
+    byId("sync-github").addEventListener("click", syncGitHub);
+    byId("check-github").addEventListener("click", () => checkGitUpdates(true));
+    byId("pull-github").addEventListener("click", () => pullGitHub());
+    byId("verify-network").addEventListener("click", verifyNetwork);
+    byId("apply-network").addEventListener("click", applyDetectedNetwork);
     init();
   </script>
 </body>
