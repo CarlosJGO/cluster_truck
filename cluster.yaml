@@ -1,13 +1,11 @@
-red_lan: 10.42.0.1/24
+red_lan: 200.100.107.231/32
 puerto_scheduler: 8786
 puerto_dashboard: 8787
-
-coordinadora: linuxMint          # nombre de la máquina que corre el scheduler
-
+coordinadora: linuxMint
 maquinas:
   linuxMint:
     so: linux
-    ip: 10.42.0.4
+    ip: 200.100.107.231
     hilos: 1
     datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
   worker-1:
