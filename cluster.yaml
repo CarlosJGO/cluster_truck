@@ -5,7 +5,7 @@ coordinadora: linuxMint
 maquinas:
   linuxMint:
     so: linux
-    ip: 10.133.231.35
+    ip: 172.20.10.4
     hilos: 1
     datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
   worker-1:
@@ -15,11 +15,11 @@ maquinas:
     datos: C:\Users\DELL\OneDrive\Documentos\Desktop\cluster_truck\datos
   andres_cadena:
     so: windows
-    ip: 10.42.0.13
+    ip: 172.20.10.6
     hilos: 6
     datos: C:\Users\Pc\OneDrive\Documentos\desarrollo movil\Cluster\cluster_truck\datos
   worker_rg:
     so: windows
-    ip: 10.42.0.7
+    ip: 172.20.10.5
     hilos: 6
     datos: C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster\cluster_truck\datos
