@@ -311,6 +311,16 @@ Resultado esperado: todos los workers listados, `get_versions` sin errores, un n
 
 ## 8. Ejemplos de código
 
+### Interfaz web local
+
+Desde la carpeta del proyecto y con el entorno virtual activado, inicia la interfaz:
+
+```bash
+python web_config.py
+```
+
+Abre `http://127.0.0.1:8000` en el navegador para editar la red, los puertos y los nodos; guarda los cambios en `cluster.yaml`. La interfaz escucha solo en la PC local. Para procesar, el scheduler debe estar activo y debes seleccionar como fuente un nodo cuya ruta de datos exista en la PC donde corre la interfaz. El botón ejecuta `procesar.py` y muestra su salida en la página. Los workers procesan los archivos desde sus propias rutas configuradas; cada worker debe tener una copia completa de los mismos CSV. Detén el servidor web con `Ctrl+C`.
+
 ### 8.1 Copia completa en todos (cualquier worker procesa cualquier archivo)
 
 El client solo pasa **nombres**; cada worker resuelve la ruta con su `CLUSTER_DATOS`. El resultado grande se guarda en el disco local del worker y solo se devuelve un resumen.

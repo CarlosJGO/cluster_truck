@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070a10">
+  <title>Cluster Truck | Dask</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a10;
+      --panel: #0e1420;
+      --panel-2: #111a29;
+      --line: #202c3d;
+      --text: #e8f1ff;
+      --muted: #91a2ba;
+      --blue: #20d9ff;
+      --blue-dark: #007fba;
+      --green: #64f5bd;
+      --red: #ff6b85;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 12% 0%, #09213a 0, transparent 34rem),
+        radial-gradient(ellipse at 96% 28%, #101a35 0, transparent 28rem),
+        var(--bg);
+    }
+    .shell { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 38px 0 64px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 30px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .mark {
+      display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid #1c7794;
+      border-radius: 14px; color: var(--blue); background: #0c2434; box-shadow: 0 0 24px #00c8ff23;
+      font-size: 23px; font-weight: 800;
+    }
+    h1 { margin: 0; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.04em; }
+    .subtitle { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
+    .local-tag { color: var(--green); border: 1px solid #1a5947; background: #0d211d; border-radius: 99px; padding: 8px 12px; font-size: 12px; white-space: nowrap; }
+    main { display: grid; gap: 18px; }
+    .panel { padding: clamp(18px, 3vw, 26px); border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, #101724f5, #0b111bf5); box-shadow: 0 14px 40px #0005; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+    h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .section-note { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+    .field.wide { grid-column: span 2; }
+    label { color: #b6c4d7; font-size: 12px; font-weight: 650; }
+    input, select {
+      width: 100%; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid #29374a;
+      border-radius: 9px; outline: none; color: var(--text); background: #090f18; font: inherit; font-size: 13px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #20d9ff1a; }
+    input[type=number] { appearance: textfield; }
+    .nodes { display: grid; gap: 12px; }
+    .node {
+      padding: 17px; border: 1px solid #263449; border-radius: 13px; background: #0a111c;
+    }
+    .node-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .node-title { color: var(--blue); font-size: 13px; font-weight: 750; letter-spacing: .03em; }
+    .node-grid { display: grid; grid-template-columns: 1.1fr 1.2fr .8fr .8fr 2fr; gap: 12px; }
+    .actions { display: flex; align-items: center; gap: 10px; }
+    button {
+      min-height: 40px; padding: 0 15px; border: 1px solid #2b3b50; border-radius: 9px;
+      color: var(--text); background: #111b29; font: inherit; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: .15s ease;
+    }
+    button:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-1px); }
+    button.primary { color: #041018; border-color: var(--blue); background: var(--blue); box-shadow: 0 0 20px #20d9ff28; }
+    button.primary:hover { color: #041018; background: #70eaff; }
+    button.danger { min-height: 32px; padding: 0 10px; color: #ff91a4; border-color: #58283a; background: #1d1019; }
+    button:disabled { opacity: .48; cursor: wait; transform: none; }
+    .config-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
+    .status { color: var(--muted); font-size: 13px; }
+    .status.ok { color: var(--green); }
+    .status.error { color: var(--red); }
+    .process-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; }
+    .process-controls { display: flex; align-items: end; gap: 12px; }
+    .process-controls .field { min-width: 220px; }
+    .data-hint { color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+    .data-hint strong { color: #c9d8ea; }
+    .log {
+      margin-top: 16px; min-height: 120px; max-height: 310px; overflow: auto; padding: 15px;
+      border: 1px solid #1e2d40; border-radius: 10px; color: #b7c8dc; background: #05090f;
+      font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .footnote { margin: 12px 0 0; color: #74869e; font-size: 12px; }
+    @media (max-width: 850px) {
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .node-grid .field:last-child { grid-column: span 2; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 24px, 1120px); padding-top: 22px; }
+      header { align-items: flex-start; }
+      .local-tag { font-size: 0; padding: 9px; }
+      .local-tag::after { content: "LOCAL"; font-size: 10px; }
+      .grid, .node-grid { grid-template-columns: 1fr; }
+      .field.wide, .node-grid .field:last-child { grid-column: auto; }
+      .section-head, .config-actions { align-items: flex-start; flex-direction: column; }
+      .process-layout { grid-template-columns: 1fr; }
+      .process-controls { flex-direction: column; align-items: stretch; }
+      .process-layout button { width: 100%; }
+      .actions { width: 100%; }
+      .actions button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="mark">D</div>
+        <div>
+          <h1>Cluster Truck</h1>
+          <p class="subtitle">Configuración y procesamiento distribuido con Dask</p>
+        </div>
+      </div>
+      <div class="local-tag">● INTERFAZ SOLO EN ESTA PC</div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Parámetros de red</h2>
+            <p class="section-note">Se guardan directamente en <code>cluster.yaml</code>.</p>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="field wide"><label for="red_lan">Red LAN (CIDR)</label><input id="red_lan" placeholder="192.168.1.0/24"></div>
+          <div class="field"><label for="puerto_scheduler">Puerto scheduler</label><input id="puerto_scheduler" type="number" min="1" max="65535"></div>
+          <div class="field"><label for="puerto_dashboard">Puerto dashboard</label><input id="puerto_dashboard" type="number" min="1" max="65535"></div>
+          <div class="field wide"><label for="coordinadora">Nodo coordinador</label><select id="coordinadora"></select></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Nodos del clúster</h2>
+            <p class="section-note">Define nombre, sistema, dirección IP, hilos y ruta local de datos.</p>
+          </div>
+          <button id="add-node" type="button">＋ Agregar nodo</button>
+        </div>
+        <div id="nodes" class="nodes"></div>
+        <div class="config-actions">
+          <span id="save-status" class="status" role="status">Cargando configuración…</span>
+          <button id="save-config" class="primary" type="button">Guardar configuración</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Ejecutar procesamiento</h2>
+            <p class="section-note">Agrupa las ventas por ciudad con Dask y muestra el resultado aquí.</p>
+          </div>
+        </div>
+        <div class="process-layout">
+          <div id="process-hint" class="data-hint">Guarda y selecciona primero el nodo coordinador.</div>
+          <div class="process-controls">
+            <div class="field">
+              <label for="source_node">Nodo con los CSV disponibles en esta PC</label>
+              <select id="source_node"></select>
+            </div>
+            <button id="run-process" class="primary" type="button">▶ Ejecutar procesamiento</button>
+          </div>
+        </div>
+        <pre id="process-log" class="log" aria-live="polite">Los mensajes del proceso aparecerán aquí.</pre>
+        <p class="footnote">La aplicación web escucha solo en 127.0.0.1. Para procesar, el scheduler debe estar activo y la ruta del nodo seleccionado como fuente debe existir en esta PC. Los workers leen los archivos desde sus propias rutas configuradas.</p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const byId = (id) => document.getElementById(id);
+    let config = null;
+    let sourceNode = null;
+    let pollTimer = null;
+
+    function setStatus(message, kind = "") {
+      const status = byId("save-status");
+      status.textContent = message;
+      status.className = `status ${kind}`;
+    }
+
+    async function request(url, options = {}) {
+      const response = await fetch(url, options);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "La solicitud no se pudo completar.");
+      return result;
+    }
+
+    function updateCoordinatorOptions(selected) {
+      const select = byId("coordinadora");
+      select.replaceChildren();
+      Object.keys(config.maquinas).forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.append(option);
+      });
+      if (selected && config.maquinas[selected]) select.value = selected;
+      const sourceSelect = byId("source_node");
+      const selectedSource = sourceNode || sourceSelect.value || selected;
+      sourceSelect.replaceChildren();
+      Object.keys(config.maquinas).forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        sourceSelect.append(option);
+      });
+      sourceNode = config.maquinas[selectedSource] ? selectedSource : Object.keys(config.maquinas)[0];
+      sourceSelect.value = sourceNode;
+      updateProcessHint();
+    }
+
+    function updateProcessHint() {
+      const name = byId("coordinadora").value;
+      const machine = config?.maquinas?.[name];
+      const source = config?.maquinas?.[byId("source_node").value];
+      byId("process-hint").innerHTML = machine
+        ? `Scheduler: <strong>${escapeHtml(name)}</strong> · ${escapeHtml(machine.ip)}:${escapeHtml(String(byId("puerto_scheduler").value))}<br>CSV de <strong>${escapeHtml(byId("source_node").value)}</strong>: ${escapeHtml(source?.datos || "")}`
+        : "Agrega al menos un nodo y selecciónalo como coordinador.";
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    function renderNodes() {
+      const container = byId("nodes");
+      container.replaceChildren();
+      Object.entries(config.maquinas).forEach(([name, machine]) => {
+        const card = document.createElement("article");
+        card.className = "node";
+        card.dataset.originalName = name;
+        const operatingSystem = machine.so === "windows" ? "windows" : "linux";
+        card.innerHTML = `
+          <div class="node-top">
+            <span class="node-title">NODO</span>
+            <button type="button" class="danger remove-node" data-name="${escapeHtml(name)}">Eliminar</button>
+          </div>
+          <div class="node-grid">
+            <div class="field"><label>Nombre</label><input data-field="name" value="${escapeHtml(name)}" required></div>
+            <div class="field"><label>Sistema operativo</label><select data-field="so"><option value="linux" ${operatingSystem === "linux" ? "selected" : ""}>Linux</option><option value="windows" ${operatingSystem === "windows" ? "selected" : ""}>Windows</option></select></div>
+            <div class="field"><label>Dirección IP</label><input data-field="ip" value="${escapeHtml(machine.ip)}" required></div>
+            <div class="field"><label>Hilos</label><input data-field="hilos" type="number" min="1" max="1024" value="${escapeHtml(String(machine.hilos))}" required></div>
+            <div class="field"><label>Ruta de datos en este nodo</label><input data-field="datos" value="${escapeHtml(machine.datos)}" required></div>
+          </div>`;
+        container.append(card);
+      });
+      container.querySelectorAll(".remove-node").forEach((button) => {
+        button.addEventListener("click", () => {
+          const currentName = button.closest(".node").querySelector('[data-field="name"]').value.trim();
+          removeNode(currentName);
+        });
+      });
+      updateCoordinatorOptions(config.coordinadora);
+    }
+
+    function collectDraft() {
+      const machines = {};
+      let coordinator = config.coordinadora;
+      document.querySelectorAll(".node").forEach((card) => {
+        const fields = Object.fromEntries(
+          [...card.querySelectorAll("[data-field]")].map((input) => [input.dataset.field, input.value.trim()])
+        );
+        if (Object.hasOwn(machines, fields.name)) {
+          throw new Error("Los nombres de nodo no pueden repetirse.");
+        }
+        if (card.dataset.originalName === config.coordinadora) coordinator = fields.name;
+        machines[fields.name] = {
+          so: fields.so,
+          ip: fields.ip,
+          hilos: Number(fields.hilos),
+          datos: fields.datos
+        };
+      });
+      const selectedCoordinator = byId("coordinadora").value;
+      if (machines[selectedCoordinator]) coordinator = selectedCoordinator;
+      return {
+        red_lan: byId("red_lan").value.trim(),
+        puerto_scheduler: Number(byId("puerto_scheduler").value),
+        puerto_dashboard: Number(byId("puerto_dashboard").value),
+        coordinadora: coordinator,
+        maquinas: machines
+      };
+    }
+
+    async function saveConfig() {
+      try {
+        const nextConfig = collectDraft();
+        if (Object.keys(nextConfig.maquinas).some((name) => !name)) {
+          throw new Error("Los nombres de nodo no pueden estar vacíos ni repetirse.");
+        }
+        const selectedCoordinator = byId("coordinadora").value;
+        if (nextConfig.maquinas[selectedCoordinator]) nextConfig.coordinadora = selectedCoordinator;
+        await request("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nextConfig)
+        });
+        config = nextConfig;
+        renderNodes();
+        setStatus("Configuración guardada en cluster.yaml.", "ok");
+        return true;
+      } catch (error) {
+        setStatus(error.message, "error");
+        return false;
+      }
+    }
+
+    function addNode() {
+      try {
+        config = collectDraft();
+      } catch (error) {
+        setStatus(error.message, "error");
+        return;
+      }
+      const base = "worker-nuevo";
+      let name = base;
+      let suffix = 2;
+      while (Object.hasOwn(config.maquinas, name)) name = `${base}-${suffix++}`;
+      config.maquinas[name] = { so: "windows", ip: "", hilos: 4, datos: "" };
+      renderNodes();
+      const card = [...document.querySelectorAll(".node")].find((item) => item.querySelector('[data-field="name"]').value === name);
+      card?.querySelector('[data-field="name"]').focus();
+      setStatus("Completa los datos del nodo nuevo y guarda la configuración.");
+    }
+
+    function removeNode(name) {
+      try {
+        config = collectDraft();
+      } catch (error) {
+        setStatus(error.message, "error");
+        return;
+      }
+      if (Object.keys(config.maquinas).length <= 1) {
+        setStatus("Debe permanecer al menos un nodo.", "error");
+        return;
+      }
+      delete config.maquinas[name];
+      if (config.coordinadora === name) config.coordinadora = Object.keys(config.maquinas)[0];
+      renderNodes();
+      setStatus(`Nodo ${name} eliminado del formulario; guarda para aplicar el cambio.`);
+    }
+
+    async function pollProcess() {
+      try {
+        const state = await request("/api/process/status");
+        byId("process-log").textContent = state.output || "Esperando salida del proceso…";
+        byId("run-process").disabled = state.running;
+        if (state.running) {
+          pollTimer = window.setTimeout(pollProcess, 900);
+        } else if (state.returncode !== null) {
+          setStatus(
+            state.returncode === 0 ? "Procesamiento finalizado correctamente." : `El proceso terminó con código ${state.returncode}.`,
+            state.returncode === 0 ? "ok" : "error"
+          );
+        }
+      } catch (error) {
+        byId("process-log").textContent = error.message;
+      }
+    }
+
+    async function runProcess() {
+      if (!await saveConfig()) return;
+      byId("run-process").disabled = true;
+      byId("process-log").textContent = "Iniciando…";
+      try {
+        await request("/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_node: byId("source_node").value })
+        });
+        setStatus("Procesamiento en curso…");
+        pollProcess();
+      } catch (error) {
+        byId("run-process").disabled = false;
+        setStatus(error.message, "error");
+      }
+    }
+
+    async function init() {
+      try {
+        config = await request("/api/config");
+        byId("red_lan").value = config.red_lan;
+        byId("puerto_scheduler").value = config.puerto_scheduler;
+        byId("puerto_dashboard").value = config.puerto_dashboard;
+        updateCoordinatorOptions(config.coordinadora);
+        renderNodes();
+        setStatus("Configuración cargada.", "ok");
+        pollProcess();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
+
+    byId("add-node").addEventListener("click", addNode);
+    byId("save-config").addEventListener("click", saveConfig);
+    byId("run-process").addEventListener("click", runProcess);
+    byId("coordinadora").addEventListener("change", updateProcessHint);
+    byId("source_node").addEventListener("change", (event) => {
+      sourceNode = event.target.value;
+      updateProcessHint();
+    });
+    byId("puerto_scheduler").addEventListener("input", updateProcessHint);
+    init();
+  </script>
+</body>
+</html>
