@@ -1,4 +1,4 @@
-red_lan: 10.133.231.0/24
+red_lan: 172.20.10.0/28
 puerto_scheduler: 8786
 puerto_dashboard: 8787
 coordinadora: linuxMint
@@ -10,7 +10,7 @@ maquinas:
     datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
   worker-1:
     so: windows
-    ip: 10.42.0.2
+    ip: 172.20.10.2
     hilos: 8
     datos: C:\Users\DELL\OneDrive\Documentos\Desktop\cluster_truck\datos
   andres_cadena:
