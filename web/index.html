@@ -1115,7 +1115,7 @@
     function updateMachineControls() {
       const processes = runtimeStatus?.processes || {};
       const isCoordinator = selectedMachine === byId("coordinadora").value;
-      byId("start-scheduler").disabled = !isCoordinator || Boolean(processes.scheduler?.running);
+      byId("start-scheduler").disabled = !isCoordinator || runtimeStatus?.cluster?.connected || Boolean(processes.scheduler?.running);
       byId("stop-scheduler").disabled = !processes.scheduler?.running;
       byId("start-worker").disabled = !selectedMachine || Boolean(processes.worker?.running);
       byId("stop-worker").disabled = !processes.worker?.running;

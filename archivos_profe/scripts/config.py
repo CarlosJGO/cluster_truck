@@ -6,18 +6,20 @@ Edita SOLO la parte marcada. El resto lo usan los demás scripts.
 import glob
 import logging
 import os
-import re
-import shutil
 import socket
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
-import dask.dataframe as dd
 import pandas as pd
 import yaml
+import dask
+pd.options.mode.string_storage = "python"
+dask.config.set({"dataframe.convert-string": False})
+import dask.dataframe as dd
 from dask import delayed
 from dask.distributed import Client, LocalCluster, get_client, get_worker
+import worker_io
 
 # ======================= EDITA SOLO ESTA PARTE =======================
 
@@ -113,7 +115,9 @@ def conectar():
     else:
         client = Client(LocalCluster(n_workers=4, threads_per_worker=2))
     client.upload_file(str(CLUSTER_CONFIG_PATH), load=False)
-    client.upload_file(str(Path(__file__).resolve()))
+    client.upload_file(str(Path(worker_io.__file__).resolve()))
+    client.run_on_scheduler(worker_io.configure_dask_strings)
+    client.run(worker_io.configure_dask_strings)
     workers = client.scheduler_info()["workers"]
     hilos = sum(w["nthreads"] for w in workers.values())
     print(f"Conectado en modo '{MODO}': {len(workers)} workers, {hilos} hilos")
@@ -131,19 +135,12 @@ def leer_ventas_csv():
         archivos[0], dtype=TIPOS, parse_dates=["fecha"], nrows=1
     ).iloc[:0]
     return dd.from_map(
-        _leer_csv_en_worker,
+        worker_io.read_csv_file,
         [os.path.basename(archivo) for archivo in archivos],
+        args=(TIPOS, ["fecha"]),
         meta=metadata,
         label="leer-ventas-locales",
         enforce_metadata=True,
-    )
-
-
-def _leer_csv_en_worker(nombre_archivo):
-    return pd.read_csv(
-        os.path.join(carpeta_datos(), nombre_archivo),
-        dtype=TIPOS,
-        parse_dates=["fecha"],
     )
 
 
@@ -151,7 +148,7 @@ def leer_ventas_limpias(columnas=None):
     """Lee las particiones Parquet desde los workers que las guardaron."""
     client = get_client()
     workers = client.scheduler_info()["workers"]
-    archivos_por_worker = client.run(_listar_parquet_en_worker)
+    archivos_por_worker = client.run(worker_io.list_parquet_files)
     meta = _meta_ventas_limpias()
     if columnas:
         meta = meta[columnas]
@@ -193,33 +190,9 @@ def _meta_ventas_limpias():
     return metadata
 
 
-def _listar_parquet_en_worker():
-    carpeta = Path(carpeta_datos()) / "ventas_limpias"
-    return {
-        "ruta": str(carpeta.resolve()),
-        "archivos": sorted(path.name for path in carpeta.glob("part-*.parquet")),
-    } if carpeta.is_dir() else {"ruta": str(carpeta.resolve()), "archivos": []}
-
-
-def _leer_parquet_en_worker(nombre_archivo, columnas=None):
-    ruta_archivo = Path(carpeta_datos()) / "ventas_limpias" / nombre_archivo
-    return pd.read_parquet(ruta_archivo, columns=columnas)
-
-
-def preparar_parquet_en_worker():
-    carpeta = Path(carpeta_datos()) / "ventas_limpias"
-    if carpeta.exists():
-        shutil.rmtree(carpeta)
-    carpeta.mkdir(parents=True, exist_ok=True)
-
-
-def escribir_parquet_en_worker(particion, partition_info=None):
-    carpeta = Path(carpeta_datos()) / "ventas_limpias"
-    carpeta.mkdir(parents=True, exist_ok=True)
-    worker_name = re.sub(r"[^A-Za-z0-9_-]+", "_", str(get_worker().name))
-    nombre = f"part-{worker_name}-{partition_info['number']:05d}.parquet"
-    particion.to_parquet(carpeta / nombre, index=False)
-    return pd.Series([nombre], name="archivo", dtype="object")
+_leer_parquet_en_worker = worker_io.read_parquet_file
+preparar_parquet_en_worker = worker_io.prepare_parquet_directory
+escribir_parquet_en_worker = worker_io.write_parquet_partition
 
 
 def titulo(texto):

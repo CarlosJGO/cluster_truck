@@ -34,6 +34,13 @@ PRACTICE_SCRIPTS = {
     "07_rendimiento.py": "Medir rendimiento",
     "mi_analisis.py": "Mi análisis",
 }
+PRACTICE_PARQUET_SCRIPTS = {
+    "04_limpiar.py",
+    "05_analizar.py",
+    "06_combinar.py",
+    "07_rendimiento.py",
+    "mi_analisis.py",
+}
 MAX_REQUEST_SIZE = 1_000_000
 CONFIG_LOCK = threading.Lock()
 PROCESS_LOCK = threading.Lock()
@@ -213,6 +220,17 @@ def start_cluster_process(role, machine_name, config):
         raise ValueError("Selecciona una máquina válida.")
     if role == "scheduler" and machine_name != config["coordinadora"]:
         raise ValueError("El scheduler solo puede iniciarse en la máquina coordinadora.")
+    if role == "scheduler":
+        coordinator = config["maquinas"][config["coordinadora"]]
+        try:
+            with socket.create_connection(
+                (coordinator["ip"], config["puerto_scheduler"]), timeout=1
+            ):
+                raise RuntimeError(
+                    f"Ya hay un scheduler escuchando en {coordinator['ip']}:{config['puerto_scheduler']}."
+                )
+        except OSError:
+            pass
 
     with CLUSTER_LOCK:
         state = CLUSTER_PROCESSES[role]
@@ -388,7 +406,7 @@ def check_git_updates():
         remote = run_git("remote", "get-url", "origin")
         if remote.returncode:
             return git_snapshot(remote.stderr.strip() or "No hay un remoto origin configurado.")
-        fetch = run_git("fetch", "--quiet", "origin", timeout=30)
+        fetch = run_git("fetch", "--quiet", "origin", timeout=10)
         return git_snapshot(fetch.stderr.strip() if fetch.returncode else None)
 
 
@@ -506,7 +524,41 @@ def run_practice_script(script_name, data_path, scheduler_address):
             PRACTICE_STATE["running"] = False
 
 
+def nodes_missing_pyarrow(config):
+    from distributed import Client
+
+    coordinator = config["maquinas"][config["coordinadora"]]
+    address = f"tcp://{coordinator['ip']}:{config['puerto_scheduler']}"
+    client = Client(address, timeout="3s", set_as_default=False)
+    try:
+        workers = client.scheduler_info()["workers"]
+        if not workers:
+            raise RuntimeError("El scheduler no tiene workers conectados.")
+        check_pyarrow = lambda: (
+            __import__("pyarrow").__version__
+            if __import__("importlib.util").util.find_spec("pyarrow") else None
+        )
+        scheduler_version = client.run_on_scheduler(check_pyarrow)
+        worker_versions = client.run(check_pyarrow)
+        missing = []
+        if scheduler_version != "26.0.1":
+            missing.append(f"scheduler {config['coordinadora']}")
+        for worker_address, version in worker_versions.items():
+            if version != "26.0.1":
+                worker = workers.get(worker_address, {})
+                missing.append(f"worker {worker.get('name', worker_address)}")
+        return missing
+    finally:
+        client.close()
+
+
 class RequestHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            self.close_connection = True
+
     def has_local_origin(self):
         host = urlsplit(f"//{self.headers.get('Host', '')}").hostname
         if host not in ("127.0.0.1", "localhost"):
@@ -692,6 +744,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 config = load_config()
                 if not isinstance(machine_name, str) or machine_name not in config["maquinas"]:
                     raise ValueError("Selecciona la máquina que ejecuta esta interfaz.")
+                if script_name in PRACTICE_PARQUET_SCRIPTS:
+                    missing_pyarrow = nodes_missing_pyarrow(config)
+                    if missing_pyarrow:
+                        raise ValueError(
+                            "Instala pyarrow==26.0.1 en: " + ", ".join(missing_pyarrow) + "."
+                        )
                 local_ip = local_ip_for(config)
                 local_name = next(
                     (name for name, machine in config["maquinas"].items() if machine["ip"] == local_ip),
