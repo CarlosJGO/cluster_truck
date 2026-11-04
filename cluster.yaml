@@ -1,11 +1,11 @@
-red_lan: 192.168.1.0/24
+red_lan: 172.20.10.0/28
 puerto_scheduler: 8786
 puerto_dashboard: 8787
-coordinadora: pc-gamer
+coordinadora: linuxMint
 maquinas:
   linuxMint:
     so: linux
-    ip: 192.168.1.9
+    ip: 172.20.10.4
     hilos: 1
     datos: datos
   worker-1:
