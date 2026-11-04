@@ -23,8 +23,3 @@ maquinas:
     ip: 172.20.10.5
     hilos: 6
     datos: datos
-  pc-gamer:
-    so: linux
-    ip: 192.168.1.11
-    hilos: 10
-    datos: datos
