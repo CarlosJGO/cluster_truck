@@ -15,7 +15,6 @@ ANTES DE USARLO: edita la seccion CONFIGURACION y deja el MISMO archivo en todas
 """
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -25,6 +24,7 @@ import yaml
 
 # La configuración compartida se mantiene en cluster.yaml.
 RUTA_CONFIG = Path(__file__).with_name("cluster.yaml")
+ROOT_DIR = RUTA_CONFIG.resolve().parent
 with RUTA_CONFIG.open(encoding="utf-8") as archivo:
     CONFIG = yaml.safe_load(archivo)
 
@@ -66,19 +66,6 @@ def detectar_nombre():
     sys.exit(f"No pude detectar esta PC por IP ({ip}). Usa: python cluster.py worker <nombre>")
 
 
-def comando_dask():
-    """Ruta al ejecutable 'dask' del entorno virtual activo."""
-    bin_dir = Path(sys.executable).parent
-    for candidato in ("dask.exe", "dask"):
-        ruta = bin_dir / candidato
-        if ruta.exists():
-            return str(ruta)
-    ruta = shutil.which("dask")
-    if ruta:
-        return ruta
-    sys.exit("No encuentro el comando 'dask'. Activa el entorno virtual e instala dask[complete].")
-
-
 def ejecutar(cmd, env=None):
     print("Ejecutando:", " ".join(cmd), "\n(Ctrl + C para detener)\n")
     try:
@@ -88,7 +75,21 @@ def ejecutar(cmd, env=None):
 
 
 def scheduler():
-    ejecutar([comando_dask(), "scheduler", "--host", IP_COORD, "--port", str(PUERTO_SCHEDULER)])
+    ip_local = mi_ip()
+    if ip_local != IP_COORD:
+        sys.exit(
+            f"Esta PC usa {ip_local or 'una IP desconocida'} para llegar al scheduler; "
+            f"la coordinadora configurada {COORD_NAME} tiene {IP_COORD}."
+        )
+    ejecutar([
+        sys.executable,
+        "-m",
+        "distributed.cli.dask_scheduler",
+        "--host",
+        IP_COORD,
+        "--port",
+        str(PUERTO_SCHEDULER),
+    ])
     
 
 def worker(nombre=None):
@@ -96,19 +97,31 @@ def worker(nombre=None):
     if nombre not in MAQUINAS:
         sys.exit(f"'{nombre}' no esta en MAQUINAS: {', '.join(MAQUINAS)}")
     m = MAQUINAS[nombre]
-    carpeta = Path(m["datos"])
+    ip_local = mi_ip()
+    if not ip_local:
+        sys.exit(f"No se pudo detectar la interfaz local para llegar a {IP_COORD}:{PUERTO_SCHEDULER}.")
+    if ip_local != m["ip"]:
+        sys.exit(f"La IP de esta PC es {ip_local}, pero {nombre} está configurada como {m['ip']}.")
+    carpeta = Path(os.path.expandvars(os.path.expanduser(m["datos"])))
+    if not carpeta.is_absolute():
+        carpeta = ROOT_DIR / carpeta
+    carpeta = carpeta.resolve()
     if not carpeta.is_dir():
-        print(f"AVISO: la carpeta de datos no existe en esta PC: {carpeta}")
-    else:
-        print(f"Datos: {carpeta} ({len(list(carpeta.glob('*.csv')))} CSV)")
+        sys.exit(f"La carpeta local de datos no existe: {carpeta}")
+    archivos = sorted(carpeta.glob("ventas_*.csv"))
+    if not archivos:
+        sys.exit(f"No hay archivos ventas_*.csv en la carpeta local: {carpeta}")
+    print(f"Datos locales: {carpeta} ({len(archivos)} CSV)")
 
     env = os.environ.copy()
-    env["CLUSTER_DATOS"] = m["datos"]
+    env["CLUSTER_PROJECT_ROOT"] = str(ROOT_DIR)
+    env["CLUSTER_DATOS"] = str(carpeta)
     cmd = [
-        comando_dask(), "worker", f"tcp://{IP_COORD}:{PUERTO_SCHEDULER}",
+        sys.executable, "-m", "distributed.cli.dask_worker",
+        f"tcp://{IP_COORD}:{PUERTO_SCHEDULER}",
         "--name", nombre,
         "--nthreads", str(m["hilos"]),
-        "--host", m["ip"],
+        "--host", ip_local,
         "--worker-port", str(PUERTO_WORKER),
         "--nanny-port", str(PUERTO_NANNY),
     ]

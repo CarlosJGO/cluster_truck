@@ -16,7 +16,7 @@ if __name__ == "__main__":
     ventas = ventas[~ventas["es_devolucion"]]
 
     # tiendas.csv tiene solo 40 filas: la leemos con pandas normal.
-    tiendas = pd.read_csv(ruta("tiendas.csv"))
+    tiendas = pd.read_csv(ruta("tiendas.csv"), dtype={"tienda": "string"})
     print(f"Tabla de tiendas: {len(tiendas)} filas")
     print(tiendas.head().to_string(index=False))
 

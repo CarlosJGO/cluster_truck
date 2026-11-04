@@ -1,5 +1,7 @@
 # Guía para montar un clúster Dask entre varias PCs (Linux y Windows)
 
+> **Guía histórica:** las secciones de NFS/SMB no aplican a la configuración actual. Para trabajar sin carpetas compartidas, sigue [Guia_Dask.md](Guia_Dask.md).
+
 Esta guía explica cómo levantar un clúster de Dask con varias computadoras de la misma red y cómo hacer que todos los workers tengan acceso a los datos. Está escrita sin nombres de máquinas: cualquier persona del equipo puede usarla para **crear** el clúster o para **unirse** a uno existente.
 
 ---

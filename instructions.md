@@ -1,3 +1,5 @@
+> **Guía histórica:** estas instrucciones describen una configuración anterior con NFS. No configures ni montes carpetas compartidas para el clúster actual. Usa [Guia_Dask.md](Guia_Dask.md), que documenta el procesamiento con una copia local de `datos/` en cada máquina.
+
 # Instrucciones y progreso — Clúster Dask + NFS
 
 ## 1. Configurar la comunicación entre las máquinas

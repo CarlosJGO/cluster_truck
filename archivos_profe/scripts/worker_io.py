@@ -2,7 +2,7 @@
 
 import os
 import re
-import shutil
+import socket
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +22,14 @@ DATA_PATHS = {
 }
 
 
+def _resolve_data_path(path):
+    directory = Path(os.path.expandvars(os.path.expanduser(str(path))))
+    if not directory.is_absolute():
+        project_root = Path(os.environ.get("CLUSTER_PROJECT_ROOT", Path.cwd()))
+        directory = project_root / directory
+    return str(directory.resolve())
+
+
 def configure_dask_strings():
     dask.config.set({"dataframe.convert-string": False})
     pd.options.mode.string_storage = "python"
@@ -29,16 +37,19 @@ def configure_dask_strings():
 
 def data_path():
     if os.environ.get("PRACTICA_MODO") == "local":
-        return os.path.expandvars(os.path.expanduser(os.environ.get("PRACTICA_DATOS", "datos")))
+        return _resolve_data_path(os.environ.get("PRACTICA_DATOS", "datos"))
+    configured_path = os.environ.get("CLUSTER_DATOS")
+    if configured_path:
+        return _resolve_data_path(configured_path)
     try:
         worker_name = str(get_worker().name)
     except ValueError:
         worker_name = None
     if worker_name in DATA_PATHS:
-        return os.path.expandvars(os.path.expanduser(DATA_PATHS[worker_name]))
+        return _resolve_data_path(DATA_PATHS[worker_name])
     unique_paths = set(DATA_PATHS.values())
     if len(unique_paths) == 1:
-        return os.path.expandvars(os.path.expanduser(unique_paths.pop()))
+        return _resolve_data_path(unique_paths.pop())
     raise RuntimeError(
         f"El worker '{worker_name}' no tiene una ruta de datos configurada en cluster.yaml."
     )
@@ -53,9 +64,9 @@ def read_csv_file(filename, dtype, parse_dates):
 def list_parquet_files():
     directory = Path(data_path()) / "ventas_limpias"
     return {
-        "ruta": str(directory.resolve()),
+        "host": socket.gethostname(),
         "archivos": sorted(path.name for path in directory.glob("part-*.parquet")),
-    } if directory.is_dir() else {"ruta": str(directory.resolve()), "archivos": []}
+    }
 
 
 def read_parquet_file(filename, columns=None):
@@ -64,9 +75,12 @@ def read_parquet_file(filename, columns=None):
 
 def prepare_parquet_directory():
     directory = Path(data_path()) / "ventas_limpias"
-    if directory.exists():
-        shutil.rmtree(directory)
     directory.mkdir(parents=True, exist_ok=True)
+    for partition in directory.glob("part-*.parquet"):
+        try:
+            partition.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def write_parquet_partition(partition, partition_info=None):

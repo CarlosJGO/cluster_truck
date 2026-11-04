@@ -29,6 +29,7 @@ MODO = os.environ.get("PRACTICA_MODO", "cluster")
 
 # Las rutas de datos son locales a cada PC y se toman de cluster.yaml.
 ROOT_DIR = Path(__file__).resolve().parents[2]
+os.environ.setdefault("CLUSTER_PROJECT_ROOT", str(ROOT_DIR))
 CLUSTER_CONFIG_PATH = Path(__file__).resolve().with_name("cluster.yaml")
 if not CLUSTER_CONFIG_PATH.is_file():
     CLUSTER_CONFIG_PATH = ROOT_DIR / "cluster.yaml"
@@ -67,9 +68,12 @@ def _detectar_maquina_local():
 
 _MAQUINA_LOCAL = _detectar_maquina_local()
 _DATOS_LOCAL_DEFAULT = DATOS_POR_WORKER.get(_MAQUINA_LOCAL, "datos")
-DATOS_CLUSTER = os.path.expandvars(
-    os.path.expanduser(os.environ.get("PRACTICA_DATOS", _DATOS_LOCAL_DEFAULT))
+_DATOS_CONFIGURADOS = Path(
+    os.path.expandvars(os.path.expanduser(os.environ.get("PRACTICA_DATOS", _DATOS_LOCAL_DEFAULT)))
 )
+if not _DATOS_CONFIGURADOS.is_absolute():
+    _DATOS_CONFIGURADOS = ROOT_DIR / _DATOS_CONFIGURADOS
+DATOS_CLUSTER = str(_DATOS_CONFIGURADOS.resolve())
 DATOS_LOCAL = DATOS_CLUSTER
 
 # =====================================================================
@@ -89,17 +93,10 @@ def carpeta_datos():
     """Devuelve la carpeta local del worker que ejecuta la tarea."""
     if MODO == "cluster":
         try:
-            worker_name = get_worker().name
+            get_worker()
         except ValueError:
             return DATOS_CLUSTER
-        if worker_name in DATOS_POR_WORKER:
-            return os.path.expandvars(os.path.expanduser(DATOS_POR_WORKER[worker_name]))
-        unique_paths = set(DATOS_POR_WORKER.values())
-        if len(unique_paths) == 1:
-            return os.path.expandvars(os.path.expanduser(unique_paths.pop()))
-        raise RuntimeError(
-            f"El worker '{worker_name}' no tiene una ruta de datos configurada en cluster.yaml."
-        )
+        return worker_io.data_path()
     return DATOS_CLUSTER
 
 
@@ -114,11 +111,13 @@ def conectar():
         client = Client(SCHEDULER, timeout="15s")
     else:
         client = Client(LocalCluster(n_workers=4, threads_per_worker=2))
+    workers = client.scheduler_info()["workers"]
+    if not workers:
+        client.close()
+        raise RuntimeError("El scheduler está activo, pero no hay workers conectados.")
     client.upload_file(str(CLUSTER_CONFIG_PATH), load=False)
     client.upload_file(str(Path(worker_io.__file__).resolve()))
-    client.run_on_scheduler(worker_io.configure_dask_strings)
     client.run(worker_io.configure_dask_strings)
-    workers = client.scheduler_info()["workers"]
     hilos = sum(w["nthreads"] for w in workers.values())
     print(f"Conectado en modo '{MODO}': {len(workers)} workers, {hilos} hilos")
     print(f"Panel web: {client.dashboard_link}")
@@ -154,14 +153,14 @@ def leer_ventas_limpias(columnas=None):
         meta = meta[columnas]
 
     particiones = []
-    rutas_vistas = set()
+    hosts_vistos = set()
     for address, archivos in archivos_por_worker.items():
         if address not in workers:
             continue
-        ruta_worker = os.path.normcase(os.path.abspath(archivos["ruta"]))
-        if ruta_worker in rutas_vistas:
+        host = archivos["host"]
+        if host in hosts_vistos:
             continue
-        rutas_vistas.add(ruta_worker)
+        hosts_vistos.add(host)
         worker_name = workers[address]["name"]
         for nombre_archivo in archivos["archivos"]:
             future = client.submit(
@@ -202,18 +201,19 @@ def titulo(texto):
 @contextmanager
 def cronometro(nombre, tiempos=None):
     """Mide cuánto tarda el bloque de código que encierra."""
-    t0 = time.time()
+    t0 = time.perf_counter()
     yield
-    segundos = time.time() - t0
+    segundos = time.perf_counter() - t0
     print(f"  ⏱  {nombre}: {segundos:.2f} s")
     if tiempos is not None:
-        tiempos[nombre] = round(segundos, 2)
+        tiempos[nombre] = segundos
 
 
 def guardar_resultado(df, nombre):
     """Guarda un resultado pequeño (pandas) en la carpeta 'resultados' de tu PC."""
-    os.makedirs("resultados", exist_ok=True)
-    archivo = os.path.join("resultados", nombre)
+    directorio = ROOT_DIR / "resultados"
+    directorio.mkdir(parents=True, exist_ok=True)
+    archivo = directorio / nombre
     df.to_csv(archivo, encoding="utf-8-sig")  # utf-8-sig para que Excel muestre bien las tildes
     print(f"  Guardado en {archivo}")
 
