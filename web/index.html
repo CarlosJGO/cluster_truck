@@ -1,138 +1,817 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#070a10">
-  <title>Cluster Truck | Dask</title>
+  <meta name="theme-color" content="#12100e">
+  <title>Cluster Truck | Dask Control Center</title>
   <style>
-    :root {
+    :root,
+    [data-theme="dark"] {
       color-scheme: dark;
-      --bg: #070a10;
-      --panel: #0e1420;
-      --panel-2: #111a29;
-      --line: #202c3d;
-      --text: #e8f1ff;
-      --muted: #91a2ba;
-      --blue: #20d9ff;
-      --blue-dark: #007fba;
-      --green: #64f5bd;
-      --red: #ff6b85;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --bg: #11100e;
+      --bg-glow-1: rgba(249, 115, 22, 0.12);
+      --bg-glow-2: rgba(245, 158, 11, 0.08);
+      --panel: #191714;
+      --panel-2: #211e1a;
+      --panel-3: #141210;
+      --input-bg: #12100e;
+      --line: #2e2923;
+      --line-strong: #423a31;
+      --text: #faf6f0;
+      --text-soft: #d8cfc4;
+      --muted: #9e9386;
+      --accent: #f97316;
+      --accent-hover: #fb923c;
+      --accent-soft: rgba(249, 115, 22, 0.14);
+      --accent-border: rgba(249, 115, 22, 0.4);
+      --accent-contrast: #160a02;
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.14);
+      --green: #10b981;
+      --green-soft: rgba(16, 185, 129, 0.14);
+      --green-border: rgba(16, 185, 129, 0.38);
+      --red: #f43f5e;
+      --red-soft: rgba(244, 63, 94, 0.14);
+      --red-border: rgba(244, 63, 94, 0.4);
+      --console-bg: #0c0b09;
+      --console-text: #e7ddd1;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      font-family: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     }
+
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f5f1ea;
+      --bg-glow-1: rgba(234, 88, 12, 0.09);
+      --bg-glow-2: rgba(217, 119, 6, 0.07);
+      --panel: #ffffff;
+      --panel-2: #faf7f2;
+      --panel-3: #f2ece2;
+      --input-bg: #fcfaf7;
+      --line: #e4dcd0;
+      --line-strong: #cfc3b3;
+      --text: #1c1815;
+      --text-soft: #3d352e;
+      --muted: #73685c;
+      --accent: #ea580c;
+      --accent-hover: #c2410c;
+      --accent-soft: rgba(234, 88, 12, 0.11);
+      --accent-border: rgba(234, 88, 12, 0.35);
+      --accent-contrast: #ffffff;
+      --amber: #d97706;
+      --amber-soft: rgba(217, 119, 6, 0.12);
+      --green: #059669;
+      --green-soft: rgba(5, 150, 105, 0.11);
+      --green-border: rgba(5, 150, 105, 0.32);
+      --red: #e11d48;
+      --red-soft: rgba(225, 29, 72, 0.1);
+      --red-border: rgba(225, 29, 72, 0.32);
+      --console-bg: #181512;
+      --console-text: #efe7dc;
+      --shadow: 0 12px 32px rgba(45, 34, 20, 0.08);
+    }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
       color: var(--text);
       background:
-        radial-gradient(ellipse at 12% 0%, #09213a 0, transparent 34rem),
-        radial-gradient(ellipse at 96% 28%, #101a35 0, transparent 28rem),
+        radial-gradient(circle at 10% 0%, var(--bg-glow-1) 0%, transparent 38rem),
+        radial-gradient(circle at 92% 18%, var(--bg-glow-2) 0%, transparent 34rem),
         var(--bg);
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
-    .shell { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 38px 0 64px; }
-    header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 30px; }
-    .brand { display: flex; align-items: center; gap: 14px; }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--panel-3);
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    .shell {
+      width: min(1320px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 24px 0 64px;
+    }
+
+    /* Top Header */
+    header {
+      position: sticky;
+      top: 12px;
+      z-index: 30;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 22px;
+      padding: 14px 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: color-mix(in srgb, var(--panel) 88%, transparent);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
     .mark {
-      display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid #1c7794;
-      border-radius: 14px; color: var(--blue); background: #0c2434; box-shadow: 0 0 24px #00c8ff23;
-      font-size: 23px; font-weight: 800;
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border: 1px solid var(--accent-border);
+      border-radius: 14px;
+      color: var(--accent-contrast);
+      background: linear-gradient(135deg, var(--accent), var(--amber));
+      box-shadow: 0 8px 22px rgba(249, 115, 22, 0.28);
+      font-size: 22px;
+      font-weight: 800;
+      flex-shrink: 0;
     }
-    h1 { margin: 0; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.04em; }
-    .subtitle { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
-    .local-tag { color: var(--green); border: 1px solid #1a5947; background: #0d211d; border-radius: 99px; padding: 8px 12px; font-size: 12px; white-space: nowrap; }
-    main { display: grid; gap: 18px; }
-    .panel { padding: clamp(18px, 3vw, 26px); border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, #101724f5, #0b111bf5); box-shadow: 0 14px 40px #0005; }
-    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
-    h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
-    .section-note { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-    .field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-    .field.wide { grid-column: span 2; }
-    label { color: #b6c4d7; font-size: 12px; font-weight: 650; }
-    input, select {
-      width: 100%; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid #29374a;
-      border-radius: 9px; outline: none; color: var(--text); background: #090f18; font: inherit; font-size: 13px;
-      transition: border-color .15s, box-shadow .15s;
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
-    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #20d9ff1a; }
-    input[type=number] { appearance: textfield; }
-    .nodes { display: grid; gap: 12px; }
-    .node {
-      padding: 17px; border: 1px solid #263449; border-radius: 13px; background: #0a111c;
+
+    h1 {
+      margin: 0;
+      font-size: clamp(20px, 2.6vw, 26px);
+      letter-spacing: -0.03em;
+      font-weight: 800;
     }
-    .node-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-    .node-title { color: var(--blue); font-size: 13px; font-weight: 750; letter-spacing: .03em; }
-    .node-grid { display: grid; grid-template-columns: 1.1fr 1.2fr .8fr .8fr 2fr; gap: 12px; }
-    .actions { display: flex; align-items: center; gap: 10px; }
+
+    .badge-version {
+      padding: 3px 9px;
+      border-radius: 99px;
+      border: 1px solid var(--accent-border);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .local-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--green);
+      border: 1px solid var(--green-border);
+      background: var(--green-soft);
+      border-radius: 99px;
+      padding: 7px 13px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .local-tag::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .theme-btn {
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--panel-2);
+      border: 1px solid var(--line-strong);
+      color: var(--text-soft);
+    }
+
+    /* Status Toast / Bar */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding: 12px 18px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--amber);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .status {
+      color: var(--text-soft);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .status.ok {
+      color: var(--green);
+    }
+
+    .status.error {
+      color: var(--red);
+    }
+
+    /* Layout Grid */
+    main {
+      display: grid;
+      gap: 20px;
+    }
+
+    .dashboard-columns {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .col-stack {
+      display: grid;
+      gap: 20px;
+    }
+
+    /* Panels */
+    .panel {
+      padding: clamp(18px, 2.5vw, 24px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(160deg, var(--panel), var(--panel-2));
+      box-shadow: var(--shadow);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-icon {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+    }
+
+    .section-note {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+
+    /* Metrics KPI Strip */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--accent);
+      border-radius: var(--radius-md);
+      background: var(--panel-3);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .metric:nth-child(3),
+    .metric:nth-child(4) {
+      border-top-color: var(--green);
+    }
+
+    .metric:nth-child(5) {
+      border-top-color: var(--amber);
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--text);
+      font-size: clamp(22px, 2.5vw, 28px);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+      margin-bottom: 4px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .worker-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 10px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .worker-list:empty {
+      display: none;
+    }
+
+    .worker-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--green-border);
+      border-radius: var(--radius-sm);
+      background: var(--green-soft);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+
+    .worker-list li strong {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    /* Forms & Inputs */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .field.wide {
+      grid-column: span 2;
+    }
+
+    label {
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      outline: none;
+      color: var(--text);
+      background: var(--input-bg);
+      font: inherit;
+      font-size: 13px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    input[type="number"] {
+      appearance: textfield;
+    }
+
+    /* Buttons */
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     button {
-      min-height: 40px; padding: 0 15px; border: 1px solid #2b3b50; border-radius: 9px;
-      color: var(--text); background: #111b29; font: inherit; font-size: 13px; font-weight: 700;
-      cursor: pointer; transition: .15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 38px;
+      padding: 0 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      background: var(--panel-2);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
-    button:hover { border-color: var(--blue); color: var(--blue); transform: translateY(-1px); }
-    button.primary { color: #041018; border-color: var(--blue); background: var(--blue); box-shadow: 0 0 20px #20d9ff28; }
-    button.primary:hover { color: #041018; background: #70eaff; }
-    button.danger { min-height: 32px; padding: 0 10px; color: #ff91a4; border-color: #58283a; background: #1d1019; }
-    button:disabled { opacity: .48; cursor: wait; transform: none; }
-    .config-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
-    .status { color: var(--muted); font-size: 13px; }
-    .status.ok { color: var(--green); }
-    .status.error { color: var(--red); }
-    .process-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; }
-    .process-controls { display: flex; align-items: end; gap: 12px; }
-    .process-controls .field { min-width: 220px; }
-    .data-hint { color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-    .data-hint strong { color: #c9d8ea; }
-    .machine-controls { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 18px; align-items: end; }
-    .machine-controls .actions { flex-wrap: wrap; }
-    .machine-detection { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-    .machine-role { margin: 8px 0 0; color: var(--green); font-size: 13px; font-weight: 700; }
-    .network-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    .network-detection { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-    .network-detection.warning { color: #ffd18a; }
-    .runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-    .runtime-item { min-width: 0; padding: 14px; border: 1px solid #263449; border-radius: 10px; background: #0a111c; }
-    .runtime-item strong { display: block; margin-bottom: 5px; font-size: 13px; }
-    .runtime-item span { color: var(--muted); font-size: 12px; }
-    .runtime-log { max-height: 120px; min-height: 0; margin-top: 10px; padding: 10px; }
-    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
-    .metric { min-width: 0; padding: 14px 0; border-top: 2px solid #235165; }
-    .metric strong { display: block; color: var(--blue); font-size: 24px; font-variant-numeric: tabular-nums; }
-    .metric span { color: var(--muted); font-size: 12px; }
-    .worker-list { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
-    .worker-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); color: #c9d8ea; font-size: 13px; }
-    .git-summary { color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-    .git-summary strong { color: #c9d8ea; }
-    .git-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    #pull-github[hidden] { display: none; }
+
+    button:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    button.primary {
+      color: var(--accent-contrast);
+      border-color: var(--accent);
+      background: linear-gradient(135deg, var(--accent), var(--amber));
+      box-shadow: 0 6px 18px rgba(249, 115, 22, 0.24);
+    }
+
+    button.primary:hover:not(:disabled) {
+      color: var(--accent-contrast);
+      filter: brightness(1.08);
+    }
+
+    button.danger {
+      min-height: 30px;
+      padding: 0 10px;
+      color: var(--red);
+      border-color: var(--red-border);
+      background: var(--red-soft);
+      font-size: 12px;
+    }
+
+    button.danger:hover:not(:disabled) {
+      background: var(--red);
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Machine & Network Section */
+    .machine-box {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel-3);
+    }
+
+    .machine-controls {
+      display: grid;
+      grid-template-columns: minmax(190px, 1fr) auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .machine-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .machine-detection {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .machine-role {
+      margin: 0;
+      padding: 4px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--amber-soft);
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .network-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel-2);
+    }
+
+    .network-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .network-detection {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .network-detection.warning {
+      color: var(--amber);
+      font-weight: 600;
+    }
+
+    .runtime-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .runtime-item {
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel-3);
+    }
+
+    .runtime-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .runtime-item strong {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .runtime-item span {
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    /* Nodes List */
+    .nodes {
+      display: grid;
+      gap: 12px;
+    }
+
+    .node {
+      padding: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-md);
+      background: var(--panel-3);
+      transition: border-color 0.15s ease;
+    }
+
+    .node.is-coordinator {
+      border-color: var(--accent-border);
+      background: linear-gradient(180deg, var(--accent-soft), var(--panel-3) 48%);
+    }
+
+    .node-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .node-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .node-title {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .coord-pill {
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: var(--accent);
+      color: var(--accent-contrast);
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+    }
+
+    .node-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 1.1fr 0.75fr;
+      gap: 10px;
+    }
+
+    .node-grid .field-path {
+      grid-column: span 4;
+    }
+
+    .config-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    /* GitHub & Process */
+    .git-summary {
+      margin: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--panel-3);
+      color: var(--text-soft);
+      font-size: 12.5px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .git-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    #pull-github[hidden] {
+      display: none;
+    }
+
+    .process-layout {
+      display: grid;
+      gap: 14px;
+    }
+
+    .data-hint {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius-sm);
+      background: var(--panel-3);
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .data-hint strong {
+      color: var(--text);
+    }
+
+    .process-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 10px;
+    }
+
     .log {
-      margin-top: 16px; min-height: 120px; max-height: 310px; overflow: auto; padding: 15px;
-      border: 1px solid #1e2d40; border-radius: 10px; color: #b7c8dc; background: #05090f;
-      font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+      margin: 12px 0 0;
+      min-height: 120px;
+      max-height: 290px;
+      overflow: auto;
+      padding: 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      color: var(--console-text);
+      background: var(--console-bg);
+      font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
-    .footnote { margin: 12px 0 0; color: #74869e; font-size: 12px; }
-    @media (max-width: 850px) {
-      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .node-grid .field:last-child { grid-column: span 2; }
-      .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .runtime-log {
+      max-height: 130px;
+      min-height: 76px;
+      margin-top: 8px;
+      padding: 10px;
     }
-    @media (max-width: 560px) {
-      .shell { width: min(100% - 24px, 1120px); padding-top: 22px; }
-      header { align-items: flex-start; }
-      .local-tag { font-size: 0; padding: 9px; }
-      .local-tag::after { content: "LOCAL"; font-size: 10px; }
-      .grid, .node-grid { grid-template-columns: 1fr; }
-      .field.wide, .node-grid .field:last-child { grid-column: auto; }
-      .section-head, .config-actions { align-items: flex-start; flex-direction: column; }
-      .machine-controls, .runtime-grid { grid-template-columns: 1fr; }
-      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .process-layout { grid-template-columns: 1fr; }
-      .process-controls { flex-direction: column; align-items: stretch; }
-      .process-layout button { width: 100%; }
-      .actions { width: 100%; }
-      .actions button { flex: 1; }
+
+    .footnote {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1040px) {
+      .dashboard-columns {
+        grid-template-columns: 1fr;
+      }
+      .metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: calc(100% - 24px);
+        padding-top: 14px;
+      }
+      header {
+        position: static;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .machine-controls,
+      .runtime-grid,
+      .process-controls {
+        grid-template-columns: 1fr;
+      }
+      .node-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .node-grid .field-path {
+        grid-column: span 2;
+      }
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 480px) {
+      .grid,
+      .node-grid,
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+      .field.wide,
+      .node-grid .field-path {
+        grid-column: auto;
+      }
     }
   </style>
 </head>
@@ -140,76 +819,36 @@
   <div class="shell">
     <header>
       <div class="brand">
-        <div class="mark">D</div>
+        <div class="mark" aria-hidden="true">CT</div>
         <div>
-          <h1>Cluster Truck</h1>
-          <p class="subtitle">Configuración y procesamiento distribuido con Dask</p>
+          <div class="brand-title">
+            <h1>Cluster Truck</h1>
+            <span class="badge-version">Dask Cluster UI</span>
+          </div>
+          <p class="subtitle">Orquestación distribuida, topología LAN y procesamiento en tiempo real</p>
         </div>
       </div>
-      <div class="local-tag">● INTERFAZ SOLO EN ESTA PC</div>
+      <div class="header-right">
+        <button id="theme-toggle" class="theme-btn" type="button" title="Cambiar paleta de color">☀️ Modo claro</button>
+        <div class="local-tag">127.0.0.1 · PANEL LOCAL</div>
+      </div>
     </header>
 
+    <div class="status-banner" role="region" aria-label="Estado de operaciones">
+      <span id="save-status" class="status" role="status">Cargando configuración…</span>
+      <span style="font-size: 12px; color: var(--muted);">Archivo activo: <code>cluster.yaml</code></span>
+    </div>
+
     <main>
+      <!-- KPI Ribbon: Capacidad del clúster -->
       <section class="panel">
         <div class="section-head">
-          <div>
-            <h2>Parámetros de red</h2>
-            <p class="section-note">Se guardan directamente en <code>cluster.yaml</code>.</p>
-          </div>
-        </div>
-        <div class="grid">
-          <div class="field wide"><label for="red_lan">Red LAN (CIDR)</label><input id="red_lan" placeholder="192.168.1.0/24"></div>
-          <div class="field"><label for="puerto_scheduler">Puerto scheduler</label><input id="puerto_scheduler" type="number" min="1" max="65535"></div>
-          <div class="field"><label for="puerto_dashboard">Puerto dashboard</label><input id="puerto_dashboard" type="number" min="1" max="65535"></div>
-          <div class="field wide"><label for="coordinadora">Nodo coordinador</label><select id="coordinadora"></select></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Esta máquina</h2>
-            <p class="section-note">La detección usa la IP local; si no coincide, asigna manualmente el nodo que representa este equipo.</p>
-          </div>
-        </div>
-        <div class="machine-controls">
-          <div class="field">
-            <label for="current-machine">Nodo representado por este equipo</label>
-            <select id="current-machine"></select>
-          </div>
-          <div class="actions">
-            <button id="start-scheduler" class="primary" type="button">▶ Iniciar coordinadora</button>
-            <button id="stop-scheduler" type="button" disabled>■ Detener coordinadora</button>
-            <button id="start-worker" class="primary" type="button">▶ Iniciar worker</button>
-            <button id="stop-worker" type="button" disabled>■ Detener worker</button>
-          </div>
-        </div>
-        <p id="machine-detection" class="machine-detection" aria-live="polite">Detectando este equipo…</p>
-        <p id="machine-role" class="machine-role" aria-live="polite">Rol sin verificar.</p>
-        <div class="network-actions">
-          <button id="verify-network" type="button">↻ Reverificar IP y red</button>
-          <button id="apply-network" class="primary" type="button" disabled>Actualizar IP y red en YAML</button>
-        </div>
-        <p id="network-detection" class="network-detection" role="status">Verifica la interfaz de red para obtener su IP y máscara.</p>
-        <div class="runtime-grid">
-          <div class="runtime-item">
-            <strong>Scheduler</strong>
-            <span id="scheduler-state">Consultando estado…</span>
-            <pre id="scheduler-log" class="log runtime-log" aria-live="polite"></pre>
-          </div>
-          <div class="runtime-item">
-            <strong>Worker local</strong>
-            <span id="worker-state">Consultando estado…</span>
-            <pre id="worker-log" class="log runtime-log" aria-live="polite"></pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Capacidad del clúster</h2>
-            <p id="cluster-summary" class="section-note">Consultando scheduler…</p>
+          <div class="section-title-group">
+            <div class="section-icon" aria-hidden="true">⚡</div>
+            <div>
+              <h2>Capacidad del clúster</h2>
+              <p id="cluster-summary" class="section-note">Consultando scheduler…</p>
+            </div>
           </div>
         </div>
         <div class="metrics">
@@ -222,56 +861,158 @@
         <ul id="worker-list" class="worker-list"></ul>
       </section>
 
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Nodos del clúster</h2>
-            <p class="section-note">Define nombre, sistema, dirección IP, hilos y ruta local de datos.</p>
-          </div>
-          <button id="add-node" type="button">＋ Agregar nodo</button>
-        </div>
-        <div id="nodes" class="nodes"></div>
-        <div class="config-actions">
-          <span id="save-status" class="status" role="status">Cargando configuración…</span>
-          <button id="save-config" class="primary" type="button">Guardar configuración</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>GitHub</h2>
-            <p class="section-note">Publica solo <code>cluster.yaml</code>; los cambios remotos se consultan cada minuto mientras esta página está abierta.</p>
-          </div>
-        </div>
-        <p id="git-status" class="git-summary" role="status">Consultando repositorio…</p>
-        <div class="git-actions">
-          <button id="sync-github" class="primary" type="button">↑ Sincronizar configuración</button>
-          <button id="check-github" type="button">↻ Revisar GitHub ahora</button>
-          <button id="pull-github" type="button" hidden>↓ Traer cambios</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Ejecutar procesamiento</h2>
-            <p class="section-note">Agrupa las ventas por ciudad con Dask y muestra el resultado aquí.</p>
-          </div>
-        </div>
-        <div class="process-layout">
-          <div id="process-hint" class="data-hint">Guarda y selecciona primero el nodo coordinador.</div>
-          <div class="process-controls">
-            <div class="field">
-              <label for="source_node">Nodo con los CSV disponibles en esta PC</label>
-              <select id="source_node"></select>
+      <div class="dashboard-columns">
+        <!-- Columna Izquierda: Operación Local y Nodos -->
+        <div class="col-stack">
+          <section class="panel">
+            <div class="section-head">
+              <div class="section-title-group">
+                <div class="section-icon" aria-hidden="true">🖥️</div>
+                <div>
+                  <h2>Esta máquina</h2>
+                  <p class="section-note">Detecta la IP local o selecciona manualmente qué nodo representa este equipo.</p>
+                </div>
+              </div>
             </div>
-            <button id="run-process" class="primary" type="button">▶ Ejecutar procesamiento</button>
-          </div>
+
+            <div class="machine-box">
+              <div class="machine-controls">
+                <div class="field">
+                  <label for="current-machine">Nodo representado por este equipo</label>
+                  <select id="current-machine"></select>
+                </div>
+                <div class="actions">
+                  <button id="start-scheduler" class="primary" type="button">▶ Iniciar coordinadora</button>
+                  <button id="stop-scheduler" type="button" disabled>■ Detener coordinadora</button>
+                  <button id="start-worker" class="primary" type="button">▶ Iniciar worker</button>
+                  <button id="stop-worker" type="button" disabled>■ Detener worker</button>
+                </div>
+              </div>
+              <div class="machine-meta">
+                <p id="machine-detection" class="machine-detection" aria-live="polite">Detectando este equipo…</p>
+                <p id="machine-role" class="machine-role" aria-live="polite">Rol sin verificar.</p>
+              </div>
+            </div>
+
+            <div class="network-bar">
+              <p id="network-detection" class="network-detection" role="status">Verifica la interfaz de red para obtener su IP y máscara.</p>
+              <div class="network-actions">
+                <button id="verify-network" type="button">↻ Reverificar IP y red</button>
+                <button id="apply-network" class="primary" type="button" disabled>Actualizar IP y red en YAML</button>
+              </div>
+            </div>
+
+            <div class="runtime-grid">
+              <div class="runtime-item">
+                <div class="runtime-head">
+                  <strong>Scheduler</strong>
+                  <span id="scheduler-state">Consultando estado…</span>
+                </div>
+                <pre id="scheduler-log" class="log runtime-log" aria-live="polite"></pre>
+              </div>
+              <div class="runtime-item">
+                <div class="runtime-head">
+                  <strong>Worker local</strong>
+                  <span id="worker-state">Consultando estado…</span>
+                </div>
+                <pre id="worker-log" class="log runtime-log" aria-live="polite"></pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div class="section-title-group">
+                <div class="section-icon" aria-hidden="true">🖧</div>
+                <div>
+                  <h2>Nodos del clúster</h2>
+                  <p class="section-note">Define nombre, sistema operativo, IP, hilos y ruta local de datos.</p>
+                </div>
+              </div>
+              <button id="add-node" type="button">＋ Agregar nodo</button>
+            </div>
+            <div id="nodes" class="nodes"></div>
+            <div class="config-actions">
+              <button id="save-config" class="primary" type="button">💾 Guardar configuración en cluster.yaml</button>
+            </div>
+          </section>
         </div>
-        <pre id="process-log" class="log" aria-live="polite">Los mensajes del proceso aparecerán aquí.</pre>
-        <p class="footnote">La aplicación web escucha solo en 127.0.0.1. Para procesar, el scheduler debe estar activo y la ruta del nodo seleccionado como fuente debe existir en esta PC. Los workers leen los archivos desde sus propias rutas configuradas.</p>
-      </section>
+
+        <!-- Columna Derecha: Parámetros de Red, GitHub y Procesamiento -->
+        <div class="col-stack">
+          <section class="panel">
+            <div class="section-head">
+              <div class="section-title-group">
+                <div class="section-icon" aria-hidden="true">🌐</div>
+                <div>
+                  <h2>Parámetros de red</h2>
+                  <p class="section-note">Configuración global compartida en <code>cluster.yaml</code>.</p>
+                </div>
+              </div>
+            </div>
+            <div class="grid">
+              <div class="field wide">
+                <label for="red_lan">Red LAN (CIDR)</label>
+                <input id="red_lan" placeholder="192.168.1.0/24">
+              </div>
+              <div class="field">
+                <label for="puerto_scheduler">Puerto scheduler</label>
+                <input id="puerto_scheduler" type="number" min="1" max="65535">
+              </div>
+              <div class="field">
+                <label for="puerto_dashboard">Puerto dashboard</label>
+                <input id="puerto_dashboard" type="number" min="1" max="65535">
+              </div>
+              <div class="field wide">
+                <label for="coordinadora">Nodo coordinador</label>
+                <select id="coordinadora"></select>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div class="section-title-group">
+                <div class="section-icon" aria-hidden="true">⇅</div>
+                <div>
+                  <h2>Sincronización GitHub</h2>
+                  <p class="section-note">Publica solo <code>cluster.yaml</code>; consulta cambios remotos cada minuto.</p>
+                </div>
+              </div>
+            </div>
+            <p id="git-status" class="git-summary" role="status">Consultando repositorio…</p>
+            <div class="git-actions">
+              <button id="sync-github" class="primary" type="button">↑ Sincronizar configuración</button>
+              <button id="check-github" type="button">↻ Revisar GitHub ahora</button>
+              <button id="pull-github" type="button" hidden>↓ Traer cambios</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div class="section-title-group">
+                <div class="section-icon" aria-hidden="true">🚀</div>
+                <div>
+                  <h2>Ejecutar procesamiento</h2>
+                  <p class="section-note">Agrupa las ventas por ciudad con Dask y muestra el resultado en consola.</p>
+                </div>
+              </div>
+            </div>
+            <div class="process-layout">
+              <div id="process-hint" class="data-hint">Guarda y selecciona primero el nodo coordinador.</div>
+              <div class="process-controls">
+                <div class="field">
+                  <label for="source_node">Nodo con los CSV disponibles en esta PC</label>
+                  <select id="source_node"></select>
+                </div>
+                <button id="run-process" class="primary" type="button">▶ Ejecutar procesamiento</button>
+              </div>
+            </div>
+            <pre id="process-log" class="log" aria-live="polite">Los mensajes del proceso aparecerán aquí.</pre>
+            <p class="footnote">La aplicación web escucha solo en 127.0.0.1. Para procesar, el scheduler debe estar activo y la ruta del nodo seleccionado como fuente debe existir en esta PC.</p>
+          </section>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -286,6 +1027,22 @@
     let selectedMachine = null;
     let machineManuallySelected = false;
     let networkSnapshot = null;
+
+    // Tema claro / oscuro
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      localStorage.setItem("cluster-theme", theme);
+      const btn = byId("theme-toggle");
+      if (btn) {
+        btn.textContent = theme === "light" ? "🌙 Modo oscuro" : "☀️ Modo claro";
+      }
+    }
+
+    applyTheme(localStorage.getItem("cluster-theme") || "dark");
+    byId("theme-toggle").addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+      applyTheme(current);
+    });
 
     function setStatus(message, kind = "") {
       const status = byId("save-status");
@@ -374,8 +1131,8 @@
       byId("start-worker").disabled = !selectedMachine || Boolean(processes.worker?.running);
       byId("stop-worker").disabled = !processes.worker?.running;
       byId("machine-role").textContent = selectedMachine
-        ? `Identidad seleccionada: ${selectedMachine} · rol ${isCoordinator ? "COORDINADORA" : "WORKER"}.`
-        : "Rol sin verificar: selecciona la máquina que representa este equipo.";
+        ? `Identidad: ${selectedMachine} · ${isCoordinator ? "COORDINADORA" : "WORKER"}`
+        : "Rol sin verificar: selecciona esta máquina";
       const matches = networkSnapshot?.nodos_coincidentes || [];
       const identityConflict = matches.length > 1 || (matches.length === 1 && matches[0] !== selectedMachine);
       byId("apply-network").disabled = !networkSnapshot || !selectedMachine || identityConflict;
@@ -477,7 +1234,7 @@
         const state = snapshot.processes[role];
         const label = role === "scheduler" ? "scheduler" : `worker ${state.name || selectedMachine || "local"}`;
         byId(`${role}-state`).textContent = state.running
-          ? `Activo: ${label}`
+          ? `● Activo: ${label}`
           : state.returncode === null ? "No iniciado desde esta interfaz." : `Finalizó con código ${state.returncode}.`;
         byId(`${role}-log`).textContent = state.output || "";
       }
@@ -629,13 +1386,17 @@
       const container = byId("nodes");
       container.replaceChildren();
       Object.entries(config.maquinas).forEach(([name, machine]) => {
+        const isCoord = name === config.coordinadora;
         const card = document.createElement("article");
-        card.className = "node";
+        card.className = `node ${isCoord ? "is-coordinator" : ""}`;
         card.dataset.originalName = name;
         const operatingSystem = machine.so === "windows" ? "windows" : "linux";
         card.innerHTML = `
           <div class="node-top">
-            <span class="node-title">NODO</span>
+            <div class="node-badges">
+              <span class="node-title">${operatingSystem === "linux" ? "🐧 NODO LINUX" : "🪟 NODO WINDOWS"}</span>
+              ${isCoord ? '<span class="coord-pill">★ COORDINADORA</span>' : ""}
+            </div>
             <button type="button" class="danger remove-node" data-name="${escapeHtml(name)}">Eliminar</button>
           </div>
           <div class="node-grid">
@@ -643,7 +1404,7 @@
             <div class="field"><label>Sistema operativo</label><select data-field="so"><option value="linux" ${operatingSystem === "linux" ? "selected" : ""}>Linux</option><option value="windows" ${operatingSystem === "windows" ? "selected" : ""}>Windows</option></select></div>
             <div class="field"><label>Dirección IP</label><input data-field="ip" value="${escapeHtml(machine.ip)}" required></div>
             <div class="field"><label>Hilos</label><input data-field="hilos" type="number" min="1" max="1024" value="${escapeHtml(String(machine.hilos))}" required></div>
-            <div class="field"><label>Ruta de datos en este nodo</label><input data-field="datos" value="${escapeHtml(machine.datos)}" required></div>
+            <div class="field field-path"><label>Ruta de datos en este nodo</label><input data-field="datos" value="${escapeHtml(machine.datos)}" required></div>
           </div>`;
         container.append(card);
       });
@@ -815,6 +1576,12 @@
       if (networkSnapshot) renderNetwork(networkSnapshot);
     });
     byId("coordinadora").addEventListener("change", () => {
+      try {
+        config = collectDraft();
+      } catch (_error) {
+        if (config) config.coordinadora = byId("coordinadora").value;
+      }
+      renderNodes();
       updateProcessHint();
       updateMachineControls();
       if (networkSnapshot) renderNetwork(networkSnapshot);
