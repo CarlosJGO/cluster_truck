@@ -56,6 +56,7 @@ PRACTICE_STATE = {
     "running": False,
     "returncode": None,
     "output": "",
+    "progress": "",
     "script": None,
     "machine": None,
 }
@@ -558,6 +559,74 @@ def append_practice_output(text):
         PRACTICE_STATE["output"] = (PRACTICE_STATE["output"] + text)[-50000:]
 
 
+def append_practice_progress(text):
+    with PRACTICE_LOCK:
+        PRACTICE_STATE["progress"] = (PRACTICE_STATE["progress"] + text)[-20000:]
+
+
+def monitor_dask_activity(client, stop_event):
+    last_snapshot = None
+    last_report = 0.0
+    while not stop_event.wait(1):
+        try:
+            workers = client.scheduler_info()["workers"]
+            processing = client.processing()
+        except Exception as error:
+            append_practice_progress(f"[Dask] Seguimiento interrumpido: {error}\n")
+            return
+
+        activity = []
+        for address, worker in workers.items():
+            active_count = len(processing.get(address, ()))
+            state = f"procesando {active_count} tarea(s)" if active_count else "sin tareas activas"
+            activity.append(f"{worker.get('name', address)}: {state}")
+        snapshot = tuple(activity)
+        now = time.monotonic()
+        if snapshot != last_snapshot or now - last_report >= 5:
+            state = "; ".join(activity) if activity else "sin workers conectados"
+            append_practice_progress(f"[Dask {time.strftime('%H:%M:%S')}] {state}\n")
+            last_snapshot = snapshot
+            last_report = now
+
+
+def append_task_stream_summary(events, workers):
+    names_by_address = {
+        address: worker.get("name", address) for address, worker in workers.items()
+    }
+    totals = {
+        name: {"tasks": 0, "seconds": 0.0}
+        for name in names_by_address.values()
+    }
+    for event in events:
+        startstops = event.get("startstops", ())
+        compute_seconds = sum(
+            max(0.0, item["stop"] - item["start"])
+            for item in startstops
+            if item.get("action") == "compute" and "start" in item and "stop" in item
+        )
+        if not compute_seconds:
+            continue
+        address = event.get("worker") or next(
+            (item.get("worker") for item in startstops if item.get("worker")), None
+        )
+        name = names_by_address.get(address, address or "worker desconocido")
+        totals.setdefault(name, {"tasks": 0, "seconds": 0.0})
+        totals[name]["tasks"] += 1
+        totals[name]["seconds"] += compute_seconds
+
+    append_practice_progress("\n[Dask] Trabajo completado por máquina:\n")
+    if not any(total["tasks"] for total in totals.values()):
+        append_practice_progress("  No se registraron tareas de cómputo.\n")
+        return
+    for name in sorted(totals):
+        total = totals[name]
+        state = "completada" if total["tasks"] else "sin tareas asignadas"
+        append_practice_progress(
+            f"  {name}: {state}; {total['tasks']} tarea(s), "
+            f"{total['seconds']:.2f} s acumulados de cómputo\n"
+        )
+
+
 def run_practice_script(script_name, data_path, scheduler_address):
     environment = os.environ.copy()
     environment["PRACTICA_MODO"] = "cluster"
@@ -568,7 +637,29 @@ def run_practice_script(script_name, data_path, scheduler_address):
     environment["PYTHONPATH"] = os.pathsep.join(
         [str(PRACTICE_SCRIPTS_DIR), environment.get("PYTHONPATH", "")]
     )
+    monitor_client = None
+    task_stream = None
+    workers = {}
+    monitor_stop = threading.Event()
+    monitor_thread = None
+    returncode = 1
     try:
+        try:
+            from distributed import Client, get_task_stream
+
+            monitor_client = Client(scheduler_address, timeout="3s", set_as_default=False)
+            workers = monitor_client.scheduler_info()["workers"]
+            task_stream = get_task_stream(client=monitor_client)
+            task_stream.__enter__()
+            append_practice_progress(
+                f"[Dask] Seguimiento activo: {len(workers)} worker(s).\n"
+            )
+        except Exception as error:
+            append_practice_progress(f"[Dask] No se pudo activar el seguimiento: {error}\n")
+            if monitor_client is not None:
+                monitor_client.close()
+                monitor_client = None
+
         process = subprocess.Popen(
             [sys.executable, str(PRACTICE_SCRIPTS_DIR / script_name)],
             cwd=PRACTICE_SCRIPTS_DIR,
@@ -581,6 +672,13 @@ def run_practice_script(script_name, data_path, scheduler_address):
             errors="replace",
             bufsize=1,
         )
+        if monitor_client is not None:
+            monitor_thread = threading.Thread(
+                target=monitor_dask_activity,
+                args=(monitor_client, monitor_stop),
+                daemon=True,
+            )
+            monitor_thread.start()
         with process.stdout:
             for line in process.stdout:
                 append_practice_output(line)
@@ -589,8 +687,18 @@ def run_practice_script(script_name, data_path, scheduler_address):
             append_practice_output(f"\nEl script terminó con código {returncode}.\n")
     except OSError as error:
         append_practice_output(f"\nNo se pudo iniciar {script_name}: {error}\n")
-        returncode = 1
     finally:
+        monitor_stop.set()
+        if monitor_thread is not None:
+            monitor_thread.join(timeout=3)
+        if task_stream is not None:
+            try:
+                task_stream.__exit__(None, None, None)
+                append_task_stream_summary(task_stream.data, workers)
+            except Exception as error:
+                append_practice_progress(f"[Dask] No se pudo resumir el stream: {error}\n")
+        if monitor_client is not None:
+            monitor_client.close()
         with PRACTICE_LOCK:
             PRACTICE_STATE["returncode"] = returncode
             PRACTICE_STATE["running"] = False
@@ -850,6 +958,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     running=True,
                     returncode=None,
                     output=f"Script: {script_name}\nMáquina: {machine_name}\nDatos locales: {data_path}\nCSV: {csv_count}\n\n",
+                    progress="Preparando seguimiento del clúster…\n",
                     script=script_name,
                     machine=machine_name,
                 )

@@ -1009,6 +1009,8 @@
               </div>
             </div>
             <pre id="process-log" class="log" aria-live="polite">Los mensajes del proceso aparecerán aquí.</pre>
+            <p class="section-note">Actividad y tiempos por worker</p>
+            <pre id="cluster-progress-log" class="log runtime-log" aria-live="polite">La actividad de Dask aparecerá aquí durante la ejecución.</pre>
             <p class="footnote">El scheduler debe estar activo. Cada worker lee los archivos desde su ruta local configurada en cluster.yaml; las copias deben contener los mismos CSV. El paso 04 guarda Parquet en los discos locales de los workers.</p>
           </section>
         </div>
@@ -1500,7 +1502,12 @@
     async function pollProcess() {
       try {
         const state = await request("/api/practice/status");
-        byId("process-log").textContent = state.output || "Esperando salida del proceso…";
+        const processLog = byId("process-log");
+        const progressLog = byId("cluster-progress-log");
+        processLog.textContent = state.output || "Esperando salida del proceso…";
+        progressLog.textContent = state.progress || "Esperando actividad del clúster…";
+        processLog.scrollTop = processLog.scrollHeight;
+        progressLog.scrollTop = progressLog.scrollHeight;
         practiceRunning = state.running;
         updateMachineControls();
         if (state.running) {
@@ -1541,6 +1548,7 @@
       if (!await saveConfig()) return;
       byId("run-process").disabled = true;
       byId("process-log").textContent = "Iniciando…";
+      byId("cluster-progress-log").textContent = "Preparando seguimiento del clúster…";
       try {
         await request("/api/practice/run", {
           method: "POST",
