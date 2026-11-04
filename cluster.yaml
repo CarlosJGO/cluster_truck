@@ -16,7 +16,7 @@ maquinas:
   andres_cadena:
     so: windows
     ip: 172.20.10.6
-    hilos: 6
+    hilos: 12
     datos: C:\Users\Pc\OneDrive\Documentos\desarrollo movil\Cluster\cluster_truck\datos
   worker_rg:
     so: windows
