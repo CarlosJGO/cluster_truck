@@ -738,6 +738,10 @@
       gap: 10px;
     }
 
+    .process-controls[hidden] {
+      display: none;
+    }
+
     .log {
       margin: 12px 0 0;
       min-height: 120px;
@@ -1000,7 +1004,7 @@
             </div>
             <div class="process-layout">
               <div id="process-hint" class="data-hint">Selecciona esta PC en “Esta máquina” y un script de la práctica.</div>
-              <div class="process-controls">
+              <div id="process-controls" class="process-controls">
                 <div class="field">
                   <label for="practice-script">Paso de la práctica</label>
                   <select id="practice-script"></select>
@@ -1121,7 +1125,11 @@
       byId("stop-scheduler").disabled = !processes.scheduler?.running;
       byId("start-worker").disabled = !selectedMachine || Boolean(processes.worker?.running);
       byId("stop-worker").disabled = !processes.worker?.running;
-      byId("run-process").disabled = !selectedMachine || !byId("practice-script").value || practiceRunning;
+      byId("process-controls").hidden = !isCoordinator;
+      byId("run-process").disabled = !isCoordinator || !byId("practice-script").value || practiceRunning;
+      byId("process-hint").textContent = isCoordinator
+        ? "La salida del script y el progreso global del clúster aparecerán aquí."
+        : "Solo la coordinadora puede ejecutar scripts. Aquí verás su salida y la actividad de este worker.";
       byId("machine-role").textContent = selectedMachine
         ? `Identidad: ${selectedMachine} · ${isCoordinator ? "COORDINADORA" : "WORKER"}`
         : "Rol sin verificar: selecciona esta máquina";
@@ -1501,7 +1509,9 @@
 
     async function pollProcess() {
       try {
-        const state = await request("/api/practice/status");
+        const machine = selectedMachine || runtimeStatus?.detected_node;
+        const query = machine ? `?machine=${encodeURIComponent(machine)}` : "";
+        const state = await request(`/api/practice/status${query}`);
         const processLog = byId("process-log");
         const progressLog = byId("cluster-progress-log");
         processLog.textContent = state.output || "Esperando salida del proceso…";
@@ -1510,8 +1520,9 @@
         progressLog.scrollTop = progressLog.scrollHeight;
         practiceRunning = state.running;
         updateMachineControls();
-        if (state.running) {
-          pollTimer = window.setTimeout(pollProcess, 900);
+        const isCoordinator = selectedMachine === byId("coordinadora").value;
+        if (state.running || !isCoordinator) {
+          pollTimer = window.setTimeout(pollProcess, state.running ? 900 : 1800);
         } else if (state.returncode !== null) {
           setStatus(
             state.returncode === 0 ? "Procesamiento finalizado correctamente." : `El proceso terminó con código ${state.returncode}.`,

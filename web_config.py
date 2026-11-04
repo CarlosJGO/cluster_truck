@@ -13,7 +13,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 import psutil
@@ -45,8 +45,13 @@ MAX_REQUEST_SIZE = 1_000_000
 CONFIG_LOCK = threading.Lock()
 PROCESS_LOCK = threading.Lock()
 PRACTICE_LOCK = threading.Lock()
+SHARED_PRACTICE_LOCK = threading.Lock()
 CLUSTER_LOCK = threading.Lock()
 GIT_LOCK = threading.Lock()
+PRACTICE_VARIABLE_NAME = "cluster_truck_practice_status"
+SHARED_PRACTICE_CLIENT = None
+SHARED_PRACTICE_ADDRESS = None
+SHARED_PRACTICE_VARIABLE = None
 PROCESS_STATE = {
     "running": False,
     "returncode": None,
@@ -57,6 +62,7 @@ PRACTICE_STATE = {
     "returncode": None,
     "output": "",
     "progress": "",
+    "worker_progress": {},
     "script": None,
     "machine": None,
 }
@@ -564,7 +570,83 @@ def append_practice_progress(text):
         PRACTICE_STATE["progress"] = (PRACTICE_STATE["progress"] + text)[-20000:]
 
 
-def monitor_dask_activity(client, stop_event):
+def append_worker_progress(name, text):
+    with PRACTICE_LOCK:
+        worker_progress = PRACTICE_STATE["worker_progress"]
+        worker_progress[name] = (worker_progress.get(name, "") + text)[-10000:]
+
+
+def publish_practice_state(variable):
+    with PRACTICE_LOCK:
+        state = {
+            key: PRACTICE_STATE[key]
+            for key in ("running", "returncode", "output", "progress", "script", "machine")
+        }
+        state["worker_progress"] = dict(PRACTICE_STATE["worker_progress"])
+    state["output"] = re.sub(
+        r"(?m)(Datos locales|Datos en): .*",
+        r"\1: ruta local configurada en la coordinadora",
+        state["output"],
+    )
+    try:
+        variable.set(state, timeout="2s")
+    except Exception:
+        pass
+
+
+def shared_practice_variable(address):
+    global SHARED_PRACTICE_CLIENT, SHARED_PRACTICE_ADDRESS, SHARED_PRACTICE_VARIABLE
+    with SHARED_PRACTICE_LOCK:
+        if (
+            SHARED_PRACTICE_CLIENT is not None
+            and SHARED_PRACTICE_ADDRESS == address
+            and SHARED_PRACTICE_CLIENT.status == "running"
+        ):
+            return SHARED_PRACTICE_VARIABLE
+        if SHARED_PRACTICE_CLIENT is not None:
+            SHARED_PRACTICE_CLIENT.close()
+        from distributed import Client, Variable
+
+        SHARED_PRACTICE_CLIENT = Client(address, timeout="1s", set_as_default=False)
+        SHARED_PRACTICE_ADDRESS = address
+        SHARED_PRACTICE_VARIABLE = Variable(PRACTICE_VARIABLE_NAME, client=SHARED_PRACTICE_CLIENT)
+        return SHARED_PRACTICE_VARIABLE
+
+
+def practice_status(machine_name=None):
+    with PRACTICE_LOCK:
+        local_state = dict(PRACTICE_STATE)
+        local_state["worker_progress"] = dict(PRACTICE_STATE["worker_progress"])
+    config = load_config()
+    coordinator_name = config["coordinadora"]
+    if not machine_name or machine_name == coordinator_name or machine_name not in config["maquinas"]:
+        return local_state
+
+    coordinator = config["maquinas"][coordinator_name]
+    address = f"tcp://{coordinator['ip']}:{config['puerto_scheduler']}"
+    try:
+        shared = shared_practice_variable(address).get(timeout="1s")
+    except Exception:
+        local_state["progress"] = local_state.get("worker_progress", {}).get(
+            machine_name, f"Esperando actividad de {machine_name}.\n"
+        )
+        return local_state
+    if not isinstance(shared, dict):
+        local_state["progress"] = local_state.get("worker_progress", {}).get(
+            machine_name, f"Esperando actividad de {machine_name}.\n"
+        )
+        return local_state
+
+    local_state.update(shared)
+    local_state["progress"] = shared.get("worker_progress", {}).get(
+        machine_name, f"Esperando actividad de {machine_name}.\n"
+    )
+    with PRACTICE_LOCK:
+        PRACTICE_STATE.update(shared)
+    return local_state
+
+
+def monitor_dask_activity(client, stop_event, variable):
     last_snapshot = None
     last_report = 0.0
     while not stop_event.wait(1):
@@ -585,13 +667,24 @@ def monitor_dask_activity(client, stop_event):
         if snapshot != last_snapshot or now - last_report >= 5:
             state = "; ".join(activity) if activity else "sin workers conectados"
             append_practice_progress(f"[Dask {time.strftime('%H:%M:%S')}] {state}\n")
+            for address, worker in workers.items():
+                name = str(worker.get("name", address))
+                active_count = len(processing.get(address, ()))
+                worker_state = (
+                    f"procesando {active_count} tarea(s)"
+                    if active_count else "sin tareas activas"
+                )
+                append_worker_progress(
+                    name, f"[Dask {time.strftime('%H:%M:%S')}] {worker_state}\n"
+                )
             last_snapshot = snapshot
             last_report = now
+            publish_practice_state(variable)
 
 
 def append_task_stream_summary(events, workers):
     names_by_address = {
-        address: worker.get("name", address) for address, worker in workers.items()
+        address: str(worker.get("name", address)) for address, worker in workers.items()
     }
     totals = {
         name: {"tasks": 0, "seconds": 0.0}
@@ -617,14 +710,15 @@ def append_task_stream_summary(events, workers):
     append_practice_progress("\n[Dask] Trabajo completado por máquina:\n")
     if not any(total["tasks"] for total in totals.values()):
         append_practice_progress("  No se registraron tareas de cómputo.\n")
-        return
     for name in sorted(totals):
         total = totals[name]
         state = "completada" if total["tasks"] else "sin tareas asignadas"
-        append_practice_progress(
+        line = (
             f"  {name}: {state}; {total['tasks']} tarea(s), "
             f"{total['seconds']:.2f} s acumulados de cómputo\n"
         )
+        append_practice_progress(line)
+        append_worker_progress(name, line.strip() + "\n")
 
 
 def run_practice_script(script_name, data_path, scheduler_address):
@@ -639,16 +733,19 @@ def run_practice_script(script_name, data_path, scheduler_address):
     )
     monitor_client = None
     task_stream = None
+    shared_variable = None
     workers = {}
     monitor_stop = threading.Event()
     monitor_thread = None
     returncode = 1
     try:
         try:
-            from distributed import Client, get_task_stream
+            from distributed import Client, Variable, get_task_stream
 
             monitor_client = Client(scheduler_address, timeout="3s", set_as_default=False)
             workers = monitor_client.scheduler_info()["workers"]
+            shared_variable = Variable(PRACTICE_VARIABLE_NAME, client=monitor_client)
+            publish_practice_state(shared_variable)
             task_stream = get_task_stream(client=monitor_client)
             task_stream.__enter__()
             append_practice_progress(
@@ -675,7 +772,7 @@ def run_practice_script(script_name, data_path, scheduler_address):
         if monitor_client is not None:
             monitor_thread = threading.Thread(
                 target=monitor_dask_activity,
-                args=(monitor_client, monitor_stop),
+                args=(monitor_client, monitor_stop, shared_variable),
                 daemon=True,
             )
             monitor_thread.start()
@@ -697,11 +794,13 @@ def run_practice_script(script_name, data_path, scheduler_address):
                 append_task_stream_summary(task_stream.data, workers)
             except Exception as error:
                 append_practice_progress(f"[Dask] No se pudo resumir el stream: {error}\n")
-        if monitor_client is not None:
-            monitor_client.close()
         with PRACTICE_LOCK:
             PRACTICE_STATE["returncode"] = returncode
             PRACTICE_STATE["running"] = False
+        if shared_variable is not None:
+            publish_practice_state(shared_variable)
+        if monitor_client is not None:
+            monitor_client.close()
 
 
 def nodes_missing_pyarrow(config):
@@ -817,9 +916,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 for name, label in PRACTICE_SCRIPTS.items()
                 if (PRACTICE_SCRIPTS_DIR / name).is_file()
             ])
-        elif self.path == "/api/practice/status":
-            with PRACTICE_LOCK:
-                self.send_json(200, dict(PRACTICE_STATE))
+        elif urlsplit(self.path).path == "/api/practice/status":
+            machine = parse_qs(urlsplit(self.path).query).get("machine", [None])[0]
+            self.send_json(200, practice_status(machine))
         else:
             self.send_json(404, {"error": "Ruta no encontrada."})
 
@@ -924,6 +1023,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 config = load_config()
                 if not isinstance(machine_name, str) or machine_name not in config["maquinas"]:
                     raise ValueError("Selecciona la máquina que ejecuta esta interfaz.")
+                if machine_name != config["coordinadora"]:
+                    raise ValueError("Solo la coordinadora puede ejecutar scripts de la práctica.")
                 if script_name in PRACTICE_PARQUET_SCRIPTS:
                     missing_pyarrow = nodes_missing_pyarrow(config)
                     if missing_pyarrow:
@@ -959,6 +1060,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     returncode=None,
                     output=f"Script: {script_name}\nMáquina: {machine_name}\nDatos locales: {data_path}\nCSV: {csv_count}\n\n",
                     progress="Preparando seguimiento del clúster…\n",
+                    worker_progress={},
                     script=script_name,
                     machine=machine_name,
                 )
