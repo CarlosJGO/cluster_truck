@@ -23,3 +23,8 @@ maquinas:
     ip: 172.20.10.5
     hilos: 6
     datos: C:\Users\LENOVO\Documents\Rosendo_Gonzalez\nuevo_cluster\cluster_truck\datos
+  pc-gamer:
+    so: linux
+    ip: 192.168.1.11
+    hilos: 10
+    datos: /home/carlosjgo/Documentos/UNIVERSIDAD/Big Data/cluster/datos
