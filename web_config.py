@@ -202,6 +202,43 @@ def append_cluster_output(role, text):
         state["output"] = (state["output"] + text)[-12000:]
 
 
+def local_dask_scheduler_process(port):
+    try:
+        connections = psutil.net_connections(kind="tcp")
+    except psutil.Error as error:
+        raise RuntimeError(f"No se pudieron inspeccionar los procesos locales: {error}") from error
+
+    for connection in connections:
+        if (
+            connection.status != psutil.CONN_LISTEN
+            or connection.laddr.port != port
+            or connection.pid is None
+        ):
+            continue
+        try:
+            process = psutil.Process(connection.pid)
+            command = process.cmdline()
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.AccessDenied as error:
+            raise RuntimeError(
+                f"No hay permiso para identificar el proceso que escucha en el puerto {port}."
+            ) from error
+
+        arguments = [argument.lower().replace("\\", "/") for argument in command]
+        executable_names = [Path(argument).name for argument in arguments]
+        is_module_scheduler = any(
+            "distributed.cli.dask_scheduler" in argument for argument in arguments
+        )
+        is_legacy_scheduler = (
+            any(name in ("dask", "dask.exe") for name in executable_names)
+            and "scheduler" in arguments
+        )
+        if is_module_scheduler or is_legacy_scheduler:
+            return process
+    return None
+
+
 def monitor_cluster_process(role, process):
     with process.stdout:
         for line in process.stdout:
@@ -273,8 +310,28 @@ def stop_cluster_process(role):
     with CLUSTER_LOCK:
         state = CLUSTER_PROCESSES.get(role)
         process = state["process"] if state else None
-        if process is None or process.poll() is not None:
-            raise RuntimeError(f"No hay un proceso {role} activo.")
+        managed_process = process is not None and process.poll() is None
+
+    if not managed_process:
+        if role != "scheduler":
+            raise RuntimeError(f"No hay un proceso {role} activo iniciado desde esta interfaz.")
+        process = local_dask_scheduler_process(load_config()["puerto_scheduler"])
+        if process is None:
+            raise RuntimeError("No se encontró un proceso Dask Scheduler local en el puerto configurado.")
+        pid = process.pid
+        process.terminate()
+        try:
+            process.wait(timeout=8)
+        except psutil.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=4)
+        with CLUSTER_LOCK:
+            CLUSTER_PROCESSES["scheduler"].update(
+                running=False,
+                returncode=0,
+                output=f"Scheduler local detenido (PID {pid}).\n",
+            )
+        return {"ok": True, "message": f"Scheduler local detenido (PID {pid})."}
 
     try:
         if os.name == "nt":
@@ -316,6 +373,21 @@ def cluster_snapshot(config):
                 "returncode": state["returncode"],
                 "output": state["output"],
             }
+
+    if not processes["scheduler"]["running"]:
+        try:
+            scheduler_process = local_dask_scheduler_process(config["puerto_scheduler"])
+        except RuntimeError as error:
+            processes["scheduler"]["output"] = str(error)
+        else:
+            if scheduler_process is not None:
+                processes["scheduler"].update(
+                    running=True,
+                    name=config["coordinadora"],
+                    returncode=None,
+                    output=f"Scheduler Dask local detectado (PID {scheduler_process.pid}).",
+                    pid=scheduler_process.pid,
+                )
 
     configured_threads = sum(machine["hilos"] for machine in config["maquinas"].values())
     cluster = {
