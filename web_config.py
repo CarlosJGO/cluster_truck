@@ -24,15 +24,33 @@ CONFIG_PATH = ROOT / "cluster.yaml"
 PAGE_PATH = ROOT / "web" / "index.html"
 PROCESS_PATH = ROOT / "procesar.py"
 CLUSTER_PATH = ROOT / "cluster.py"
+PRACTICE_SCRIPTS_DIR = ROOT / "archivos_profe" / "scripts"
+PRACTICE_SCRIPTS = {
+    "02_explorar.py": "Explorar datos",
+    "03_calidad.py": "Revisar calidad",
+    "04_limpiar.py": "Limpiar y guardar Parquet",
+    "05_analizar.py": "Analizar ventas",
+    "06_combinar.py": "Combinar tiendas",
+    "07_rendimiento.py": "Medir rendimiento",
+    "mi_analisis.py": "Mi análisis",
+}
 MAX_REQUEST_SIZE = 1_000_000
 CONFIG_LOCK = threading.Lock()
 PROCESS_LOCK = threading.Lock()
+PRACTICE_LOCK = threading.Lock()
 CLUSTER_LOCK = threading.Lock()
 GIT_LOCK = threading.Lock()
 PROCESS_STATE = {
     "running": False,
     "returncode": None,
     "output": "",
+}
+PRACTICE_STATE = {
+    "running": False,
+    "returncode": None,
+    "output": "",
+    "script": None,
+    "machine": None,
 }
 CLUSTER_PROCESSES = {
     role: {"process": None, "name": None, "running": False, "returncode": None, "output": ""}
@@ -445,6 +463,49 @@ def run_processing(data_path, scheduler_address):
             PROCESS_STATE["running"] = False
 
 
+def append_practice_output(text):
+    with PRACTICE_LOCK:
+        PRACTICE_STATE["output"] = (PRACTICE_STATE["output"] + text)[-50000:]
+
+
+def run_practice_script(script_name, data_path, scheduler_address):
+    environment = os.environ.copy()
+    environment["PRACTICA_MODO"] = "cluster"
+    environment["PRACTICA_DATOS"] = data_path
+    environment["PRACTICA_SCHEDULER"] = scheduler_address
+    environment["DASK_SCHEDULER_ADDRESS"] = scheduler_address
+    environment["PYTHONUNBUFFERED"] = "1"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(PRACTICE_SCRIPTS_DIR), environment.get("PYTHONPATH", "")]
+    )
+    try:
+        process = subprocess.Popen(
+            [sys.executable, str(PRACTICE_SCRIPTS_DIR / script_name)],
+            cwd=PRACTICE_SCRIPTS_DIR,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        with process.stdout:
+            for line in process.stdout:
+                append_practice_output(line)
+        returncode = process.wait()
+        if returncode:
+            append_practice_output(f"\nEl script terminó con código {returncode}.\n")
+    except OSError as error:
+        append_practice_output(f"\nNo se pudo iniciar {script_name}: {error}\n")
+        returncode = 1
+    finally:
+        with PRACTICE_LOCK:
+            PRACTICE_STATE["returncode"] = returncode
+            PRACTICE_STATE["running"] = False
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     def has_local_origin(self):
         host = urlsplit(f"//{self.headers.get('Host', '')}").hostname
@@ -518,6 +579,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/process/status":
             with PROCESS_LOCK:
                 self.send_json(200, dict(PROCESS_STATE))
+        elif self.path == "/api/practice/scripts":
+            self.send_json(200, [
+                {"name": name, "label": label}
+                for name, label in PRACTICE_SCRIPTS.items()
+                if (PRACTICE_SCRIPTS_DIR / name).is_file()
+            ])
+        elif self.path == "/api/practice/status":
+            with PRACTICE_LOCK:
+                self.send_json(200, dict(PRACTICE_STATE))
         else:
             self.send_json(404, {"error": "Ruta no encontrada."})
 
@@ -609,6 +679,60 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json(409, {"error": str(error)})
                 return
             self.send_json(409 if result["needs_stash"] else 200, result)
+            return
+        if self.path == "/api/practice/run":
+            try:
+                request_data = self.read_json()
+                if not isinstance(request_data, dict):
+                    raise ValueError("La solicitud debe indicar el script y la máquina local.")
+                script_name = request_data.get("script")
+                machine_name = request_data.get("machine")
+                if not isinstance(script_name, str) or script_name not in PRACTICE_SCRIPTS:
+                    raise ValueError("Selecciona un script de práctica permitido.")
+                config = load_config()
+                if not isinstance(machine_name, str) or machine_name not in config["maquinas"]:
+                    raise ValueError("Selecciona la máquina que ejecuta esta interfaz.")
+                local_ip = local_ip_for(config)
+                local_name = next(
+                    (name for name, machine in config["maquinas"].items() if machine["ip"] == local_ip),
+                    None,
+                )
+                if local_name and machine_name != local_name:
+                    raise ValueError(f"Esta interfaz está en {local_name}; selecciona esa máquina, no {machine_name}.")
+                data_path = Path(config["maquinas"][machine_name]["datos"]).expanduser()
+                if not data_path.is_absolute():
+                    data_path = ROOT / data_path
+                data_path = data_path.resolve()
+                if not data_path.is_dir():
+                    raise ValueError(f"La ruta local de datos de {machine_name} no existe en esta PC: {data_path}")
+                csv_count = sum(1 for _ in data_path.glob("ventas_*.csv"))
+                if not csv_count:
+                    raise ValueError(f"No hay archivos ventas_*.csv en {data_path}.")
+            except (OSError, ValueError, yaml.YAMLError) as error:
+                self.send_json(400, {"error": str(error)})
+                return
+
+            with PRACTICE_LOCK:
+                if PRACTICE_STATE["running"]:
+                    self.send_json(409, {"error": "Ya hay un script de práctica en ejecución."})
+                    return
+                PRACTICE_STATE.update(
+                    running=True,
+                    returncode=None,
+                    output=f"Script: {script_name}\nMáquina: {machine_name}\nDatos locales: {data_path}\nCSV: {csv_count}\n\n",
+                    script=script_name,
+                    machine=machine_name,
+                )
+
+            coordinator = config["maquinas"][config["coordinadora"]]
+            scheduler_address = f"tcp://{coordinator['ip']}:{config['puerto_scheduler']}"
+            thread = threading.Thread(
+                target=run_practice_script,
+                args=(script_name, str(data_path), scheduler_address),
+                daemon=True,
+            )
+            thread.start()
+            self.send_json(202, {"ok": True, "message": f"{script_name} iniciado."})
             return
         if self.path != "/api/process":
             self.send_json(404, {"error": "Ruta no encontrada."})

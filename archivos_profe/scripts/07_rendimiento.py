@@ -8,7 +8,16 @@ import glob
 import dask.dataframe as dd
 import pandas as pd
 
-from config import MODO, TIPOS, conectar, cronometro, guardar_resultado, leer_ventas_limpias, ruta, titulo
+from config import (
+    MODO,
+    conectar,
+    cronometro,
+    guardar_resultado,
+    leer_ventas_csv,
+    leer_ventas_limpias,
+    ruta,
+    titulo,
+)
 
 if __name__ == "__main__":
     client = conectar()
@@ -17,8 +26,7 @@ if __name__ == "__main__":
 
     titulo("1 · Dask leyendo los CSV")
     with cronometro("Dask + CSV", tiempos):
-        dd.read_csv(ruta("ventas_*.csv"), dtype=TIPOS, blocksize="64MB") \
-            .groupby("categoria")["monto"].sum().compute()
+        leer_ventas_csv().groupby("categoria")["monto"].sum().compute()
 
     titulo("2 · Dask leyendo Parquet (todas las columnas)")
     with cronometro("Dask + Parquet", tiempos):

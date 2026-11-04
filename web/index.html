@@ -994,22 +994,22 @@
                 <div class="section-icon" aria-hidden="true">🚀</div>
                 <div>
                   <h2>Ejecutar procesamiento</h2>
-                  <p class="section-note">Agrupa las ventas por ciudad con Dask y muestra el resultado en consola.</p>
+                  <p class="section-note">Ejecuta cada paso como cliente del clúster Dask activo.</p>
                 </div>
               </div>
             </div>
             <div class="process-layout">
-              <div id="process-hint" class="data-hint">Guarda y selecciona primero el nodo coordinador.</div>
+              <div id="process-hint" class="data-hint">Selecciona esta PC en “Esta máquina” y un script de la práctica.</div>
               <div class="process-controls">
                 <div class="field">
-                  <label for="source_node">Nodo con los CSV disponibles en esta PC</label>
-                  <select id="source_node"></select>
+                  <label for="practice-script">Paso de la práctica</label>
+                  <select id="practice-script"></select>
                 </div>
-                <button id="run-process" class="primary" type="button">▶ Ejecutar procesamiento</button>
+                <button id="run-process" class="primary" type="button">▶ Ejecutar script</button>
               </div>
             </div>
             <pre id="process-log" class="log" aria-live="polite">Los mensajes del proceso aparecerán aquí.</pre>
-            <p class="footnote">La aplicación web escucha solo en 127.0.0.1. Para procesar, el scheduler debe estar activo y la ruta del nodo seleccionado como fuente debe existir en esta PC.</p>
+            <p class="footnote">El scheduler debe estar activo. Cada worker lee los archivos desde su ruta local configurada en cluster.yaml; las copias deben contener los mismos CSV. El paso 04 guarda Parquet en los discos locales de los workers.</p>
           </section>
         </div>
       </div>
@@ -1019,7 +1019,6 @@
   <script>
     const byId = (id) => document.getElementById(id);
     let config = null;
-    let sourceNode = null;
     let pollTimer = null;
     let clusterTimer = null;
     let gitTimer = null;
@@ -1027,6 +1026,7 @@
     let selectedMachine = null;
     let machineManuallySelected = false;
     let networkSnapshot = null;
+    let practiceRunning = false;
 
     // Tema claro / oscuro
     function applyTheme(theme) {
@@ -1071,17 +1071,6 @@
         select.append(option);
       });
       if (selected && config.maquinas[selected]) select.value = selected;
-      const sourceSelect = byId("source_node");
-      const selectedSource = sourceNode || sourceSelect.value || selected;
-      sourceSelect.replaceChildren();
-      Object.keys(config.maquinas).forEach((name) => {
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        sourceSelect.append(option);
-      });
-      sourceNode = config.maquinas[selectedSource] ? selectedSource : Object.keys(config.maquinas)[0];
-      sourceSelect.value = sourceNode;
       updateProcessHint();
       renderMachineOptions();
     }
@@ -1115,12 +1104,12 @@
     }
 
     function updateProcessHint() {
-      const name = byId("coordinadora").value;
+      const name = selectedMachine;
       const machine = config?.maquinas?.[name];
-      const source = config?.maquinas?.[byId("source_node").value];
+      const coordinator = config?.maquinas?.[byId("coordinadora").value];
       byId("process-hint").innerHTML = machine
-        ? `Scheduler: <strong>${escapeHtml(name)}</strong> · ${escapeHtml(machine.ip)}:${escapeHtml(String(byId("puerto_scheduler").value))}<br>CSV de <strong>${escapeHtml(byId("source_node").value)}</strong>: ${escapeHtml(source?.datos || "")}`
-        : "Agrega al menos un nodo y selecciónalo como coordinador.";
+        ? `PC local: <strong>${escapeHtml(name)}</strong> · ${name === config.coordinadora ? "coordinadora" : "worker"}<br>Datos: ${escapeHtml(machine.datos)}<br>Scheduler: ${escapeHtml(coordinator?.ip || "")}:${escapeHtml(String(byId("puerto_scheduler").value))}`
+        : "Selecciona esta PC en “Esta máquina” para usar su ruta local de datos.";
     }
 
     function updateMachineControls() {
@@ -1130,6 +1119,7 @@
       byId("stop-scheduler").disabled = !processes.scheduler?.running;
       byId("start-worker").disabled = !selectedMachine || Boolean(processes.worker?.running);
       byId("stop-worker").disabled = !processes.worker?.running;
+      byId("run-process").disabled = !selectedMachine || !byId("practice-script").value || practiceRunning;
       byId("machine-role").textContent = selectedMachine
         ? `Identidad: ${selectedMachine} · ${isCoordinator ? "COORDINADORA" : "WORKER"}`
         : "Rol sin verificar: selecciona esta máquina";
@@ -1509,9 +1499,10 @@
 
     async function pollProcess() {
       try {
-        const state = await request("/api/process/status");
+        const state = await request("/api/practice/status");
         byId("process-log").textContent = state.output || "Esperando salida del proceso…";
-        byId("run-process").disabled = state.running;
+        practiceRunning = state.running;
+        updateMachineControls();
         if (state.running) {
           pollTimer = window.setTimeout(pollProcess, 900);
         } else if (state.returncode !== null) {
@@ -1525,17 +1516,38 @@
       }
     }
 
-    async function runProcess() {
+    async function loadPracticeScripts() {
+      const scripts = await request("/api/practice/scripts");
+      const select = byId("practice-script");
+      select.replaceChildren();
+      scripts.forEach((script) => {
+        const option = document.createElement("option");
+        option.value = script.name;
+        option.textContent = `${script.name} · ${script.label}`;
+        select.append(option);
+      });
+      updateMachineControls();
+    }
+
+    async function runPracticeScript() {
+      if (!selectedMachine) {
+        setStatus("Selecciona esta PC en “Esta máquina” antes de ejecutar.", "error");
+        return;
+      }
+      if (!byId("practice-script").value) {
+        setStatus("No hay scripts de práctica disponibles.", "error");
+        return;
+      }
       if (!await saveConfig()) return;
       byId("run-process").disabled = true;
       byId("process-log").textContent = "Iniciando…";
       try {
-        await request("/api/process", {
+        await request("/api/practice/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data_node: byId("source_node").value })
+          body: JSON.stringify({ script: byId("practice-script").value, machine: selectedMachine })
         });
-        setStatus("Procesamiento en curso…");
+        setStatus(`${byId("practice-script").value} en ejecución en ${selectedMachine}…`);
         pollProcess();
       } catch (error) {
         byId("run-process").disabled = false;
@@ -1551,6 +1563,7 @@
         byId("puerto_dashboard").value = config.puerto_dashboard;
         updateCoordinatorOptions(config.coordinadora);
         renderNodes();
+        await loadPracticeScripts();
         setStatus("Configuración cargada.", "ok");
         pollProcess();
         pollCluster();
@@ -1563,7 +1576,8 @@
 
     byId("add-node").addEventListener("click", addNode);
     byId("save-config").addEventListener("click", saveConfig);
-    byId("run-process").addEventListener("click", runProcess);
+    byId("run-process").addEventListener("click", runPracticeScript);
+    byId("practice-script").addEventListener("change", updateMachineControls);
     byId("start-scheduler").addEventListener("click", () => clusterAction("start", "scheduler"));
     byId("stop-scheduler").addEventListener("click", () => clusterAction("stop", "scheduler"));
     byId("start-worker").addEventListener("click", () => clusterAction("start", "worker"));
@@ -1573,6 +1587,7 @@
       machineManuallySelected = true;
       localStorage.setItem("cluster-machine", selectedMachine);
       updateMachineControls();
+      updateProcessHint();
       if (networkSnapshot) renderNetwork(networkSnapshot);
     });
     byId("coordinadora").addEventListener("change", () => {
@@ -1585,10 +1600,6 @@
       updateProcessHint();
       updateMachineControls();
       if (networkSnapshot) renderNetwork(networkSnapshot);
-    });
-    byId("source_node").addEventListener("change", (event) => {
-      sourceNode = event.target.value;
-      updateProcessHint();
     });
     byId("puerto_scheduler").addEventListener("input", updateProcessHint);
     byId("sync-github").addEventListener("click", syncGitHub);

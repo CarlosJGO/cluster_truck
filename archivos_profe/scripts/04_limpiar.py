@@ -5,7 +5,17 @@ Crea la carpeta 'ventas_limpias' dentro de la carpeta de datos de tu grupo.
 """
 from dask.distributed import progress
 
-from config import conectar, cronometro, leer_ventas_csv, leer_ventas_limpias, ruta, titulo
+import pandas as pd
+
+from config import (
+    conectar,
+    cronometro,
+    escribir_parquet_en_worker,
+    leer_ventas_csv,
+    leer_ventas_limpias,
+    preparar_parquet_en_worker,
+    titulo,
+)
 
 if __name__ == "__main__":
     client = conectar()
@@ -27,8 +37,12 @@ if __name__ == "__main__":
 
     titulo("Guardando en Parquet (lo hacen los workers en paralelo)")
     with cronometro("limpiar y escribir"):
-        tarea = ventas.to_parquet(ruta("ventas_limpias"), write_index=False,
-                                  overwrite=True, compute=False)
+        client.run(preparar_parquet_en_worker)
+        tarea = ventas.map_partitions(
+            escribir_parquet_en_worker,
+            meta=pd.Series([], name="archivo", dtype="object"),
+            partition_info=True,
+        )
         futuro = client.compute(tarea)
         progress(futuro)  # barra de progreso en la consola
         futuro.result()
