@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>Práctica Dask: Ventas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: índice lateral fijo + columna de lectura; cada paso = script + terminal + punto de control */
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --ink:#142230; --muted:#56687A; --line:#D5DEE6;
+  --accent:#0B6E78; --accent-soft:#DDEFF0;
+  --term-bg:#0F1C26; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#B4590A; --r-work:#0B6E78; --r-client:#5B4FB0; --r-all:#56687A;
+  --warn-bg:#FFF3E3; --warn-line:#E8B26A; --task:#5B4FB0; --task-soft:#ECE9FA;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D161D; --surface:#13212B; --ink:#E3ECF2; --muted:#93A6B5; --line:#24394A;
+  --accent:#4FC1C9; --accent-soft:#12343A;
+  --term-bg:#08121A; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#F0A050; --r-work:#4FC1C9; --r-client:#A99CF0; --r-all:#93A6B5;
+  --warn-bg:#2B2113; --warn-line:#8A6326; --task:#A99CF0; --task-soft:#221E3A; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0D161D; --surface:#13212B; --ink:#E3ECF2; --muted:#93A6B5; --line:#24394A;
+  --accent:#4FC1C9; --accent-soft:#12343A;
+  --term-bg:#08121A; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#F0A050; --r-work:#4FC1C9; --r-client:#A99CF0; --r-all:#93A6B5;
+  --warn-bg:#2B2113; --warn-line:#8A6326; --task:#A99CF0; --task-soft:#221E3A; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16.5px;line-height:1.65;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);padding:.1em .35em;border-radius:4px}
+
+.shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:56px}
+@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr);gap:0}.toc{display:none}}
+
+.hero{max-width:1180px;margin:0 auto;padding-block:56px 40px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:center}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);padding-block:32px 24px}}
+.eyebrow{font-family:var(--f-mono);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:clamp(34px,5vw,56px);font-weight:800;letter-spacing:-.02em;margin-top:12px}
+.hero p{color:var(--muted);font-size:18px;max-width:52ch;margin:16px 0 0}
+.stats{display:flex;flex-wrap:wrap;gap:22px;margin-top:22px}
+.stats div{display:flex;flex-direction:column}
+.stats b{font-family:var(--f-display);font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.stats span{font-size:13px;color:var(--muted)}
+.ipbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+.ipbox h2{font-size:19px}
+.ipbox p{font-size:14.5px;color:var(--muted);margin:6px 0 16px}
+.ipgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:480px){.ipgrid{grid-template-columns:minmax(0,1fr)}}
+.ipgrid label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+.ipgrid input{font-family:var(--f-mono);font-size:14.5px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
+.ipgrid .full{grid-column:1/-1}
+.hint{font-size:12.5px;color:var(--muted);margin-top:10px}
+.hint code{word-break:break-all}
+
+.toc{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding-top:28px;max-height:100vh;overflow:auto}
+.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.toc a{display:flex;gap:10px;text-decoration:none;color:var(--muted);font-size:14px;padding:6px 10px;border-radius:8px;line-height:1.35}
+.toc a:hover{background:var(--surface);color:var(--ink)}
+.toc a.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.toc .n{font-family:var(--f-mono);font-size:12px;color:var(--accent);min-width:20px;padding-top:1px}
+.toc .lbl{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px 10px}
+.progress{margin:18px 10px 0;font-size:13px;color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+
+main{min-width:0}
+section{padding-block:40px;border-top:1px solid var(--line)}
+section:first-child{border-top:0;padding-top:28px}
+.sec-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}
+.num{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1;color:var(--accent);min-width:58px}
+.sec-head h2{font-size:clamp(24px,3vw,32px);font-weight:700;letter-spacing:-.01em}
+.sec-head .sub{color:var(--muted);margin:6px 0 0;font-size:15.5px}
+.prose{max-width:68ch}
+.prose p{margin:0 0 14px}
+.prose ul,.prose ol{margin:0 0 14px;padding-left:22px}
+.prose li{margin-bottom:6px}
+h3{font-size:19px;margin:26px 0 10px}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.c-client{color:var(--r-client)} .c-all{color:var(--r-all)} .c-sched{color:var(--r-sched)}
+
+.term{margin:14px 0 18px;border-radius:12px;overflow:hidden;background:var(--term-bg);border:1px solid var(--line);max-width:860px}
+.term-top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.term-top .where{font-family:var(--f-mono);font-size:12px;color:var(--term-dim);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.term .c-client{color:#B9AEF5}.term .c-all{color:#A9BAC7}.term .c-sched{color:#F0A050}
+.copy{font-family:var(--f-mono);font-size:12px;background:transparent;color:var(--term-fg);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 10px;cursor:pointer}
+.copy:hover{border-color:var(--term-hl);color:var(--term-hl)}
+.term pre{margin:0;padding:14px 16px;overflow-x:auto;color:var(--term-fg);font-family:var(--f-mono);font-size:13.5px;line-height:1.6}
+.term .cm{color:var(--term-dim)}
+.term .ip-s,.term .dcl,.term .grp{color:var(--term-hl);font-weight:600}
+.out{border-top:1px dashed rgba(255,255,255,.12)}
+.out pre{color:var(--term-dim);font-size:12.5px}
+.out .tag{font-family:var(--f-mono);font-size:11px;color:var(--term-dim);padding:8px 16px 0;letter-spacing:.06em;text-transform:uppercase}
+
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;margin:16px 0;max-width:68ch;font-size:15.5px}
+.note.warn{border-color:var(--warn-line);background:var(--warn-bg)}
+.note b:first-child{display:block;font-family:var(--f-display);font-size:15.5px;margin-bottom:2px}
+
+.task{border:1px dashed var(--task);background:var(--task-soft);border-radius:12px;padding:16px 18px;margin:18px 0;max-width:68ch}
+.task .t-lbl{font-family:var(--f-mono);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--task)}
+.task ol,.task ul{margin:8px 0 0;padding-left:22px}
+.task li{margin-bottom:6px}
+.task p{margin:8px 0 0}
+
+.concept{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0;max-width:860px}
+@media (max-width:700px){.concept{grid-template-columns:minmax(0,1fr)}}
+.concept div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.concept h3{margin:0 0 6px;font-size:16.5px}
+.concept p{margin:0;font-size:14.5px;color:var(--muted)}
+
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto;margin:10px 0 18px}
+.diagram svg{display:block;width:100%;min-width:700px;height:auto}
+.d-box{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.d-end{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+.d-t{font-family:var(--f-display);font-weight:700;font-size:14px;fill:var(--ink)}
+.d-s{font-family:var(--f-mono);font-size:10.5px;fill:var(--muted)}
+.d-line{stroke:var(--muted);stroke-width:1.6;fill:none}
+
+.tbl{overflow-x:auto;margin:12px 0 18px;max-width:860px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.n{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td code{white-space:nowrap}
+.check-tbl th:not(:first-child){text-align:right}
+
+.done{display:flex;gap:10px;align-items:center;margin-top:18px;font-size:14px;color:var(--muted)}
+.done button{font-family:var(--f-body);font-size:14px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.done button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+
+footer{max-width:1180px;margin:40px auto 0;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:20px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<header class="hero">
+  <div>
+    <div class="eyebrow">Práctica guiada · Dask en el cluster de la clase</div>
+    <h1>Procesa 9 millones de ventas con tu cluster</h1>
+    <p>Vas a generar un año de ventas de una cadena de tiendas, encontrar sus errores, limpiarlos y responder preguntas de negocio repartiendo el trabajo entre varias PCs. Cada paso tiene un script listo y una cifra para comprobar que vas bien.</p>
+    <div class="stats">
+      <div><b>9,2 M</b><span>filas de ventas</span></div>
+      <div><b>1,07 GB</b><span>en 12 archivos CSV</span></div>
+      <div><b>40</b><span>tiendas en 12 ciudades</span></div>
+      <div><b>8</b><span>scripts, uno por paso</span></div>
+    </div>
+  </div>
+  <div class="ipbox">
+    <h2>Tus datos de la clase</h2>
+    <p>Escríbelos una vez y todos los comandos de la guía se ajustan. Te los da tu profesor.</p>
+    <div class="ipgrid">
+      <label for="ip">IP del scheduler<input id="ip" value="192.168.1.10" spellcheck="false"></label>
+      <label for="grupo">Nombre de tu grupo<input id="grupo" value="grupo01" spellcheck="false"></label>
+      <label for="share" class="full">Carpeta compartida<input id="share" value="\\192.168.1.10\datos" spellcheck="false"></label>
+    </div>
+    <div class="hint">Tus datos irán en: <code class="dcl">\\192.168.1.10\datos\grupo01</code></div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="toc" aria-label="Índice">
+    <div class="lbl">Pasos</div>
+    <ol id="toc">
+      <li><a href="#plan"><span class="n">00</span>Qué vas a hacer</a></li>
+      <li><a href="#preparar"><span class="n">01</span>Prepara tu PC</a></li>
+      <li><a href="#config"><span class="n">02</span>Configura config.py</a></li>
+      <li><a href="#conectar"><span class="n">03</span>Conéctate al cluster</a></li>
+      <li><a href="#generar"><span class="n">04</span>Genera los datos</a></li>
+      <li><a href="#explorar"><span class="n">05</span>Explora</a></li>
+      <li><a href="#calidad"><span class="n">06</span>Diagnostica errores</a></li>
+      <li><a href="#limpiar"><span class="n">07</span>Limpia y guarda</a></li>
+      <li><a href="#analizar"><span class="n">08</span>Analiza</a></li>
+      <li><a href="#combinar"><span class="n">09</span>Combina tablas</a></li>
+      <li><a href="#rendimiento"><span class="n">10</span>Mide el rendimiento</a></li>
+      <li><a href="#entrega"><span class="n">11</span>Tu análisis y entrega</a></li>
+      <li><a href="#problemas"><span class="n">12</span>Si algo falla</a></li>
+    </ol>
+    <div class="progress">Tu avance: <span id="prog-txt">0 de 11 pasos</span><div class="bar"><i id="prog-bar"></i></div></div>
+  </nav>
+
+  <main>
+    <!-- 00 -->
+    <section id="plan">
+      <div class="sec-head"><div class="num">00</div><div><h2>Qué vas a hacer</h2><p class="sub">El recorrido completo de los datos, de los CSV en bruto a las respuestas.</p></div></div>
+      <div class="prose">
+        <p>Trabajas en el área de datos de <b>Mercado Andino</b>, una cadena ficticia con 40 tiendas en Colombia. Cada mes la caja exporta un CSV con todas las ventas, pero los datos traen errores. La gerencia quiere saber qué se vende, dónde y cuándo, y tú vas a usar el cluster para responder.</p>
+      </div>
+      <div class="diagram" role="img" aria-label="Flujo de la práctica: 12 CSV, diagnóstico, limpieza, Parquet, análisis y resultados.">
+        <svg viewBox="0 0 900 130" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+          <line class="d-line" x1="130" y1="50" x2="159" y2="50" marker-end="url(#ar)"/>
+          <line class="d-line" x1="282" y1="50" x2="311" y2="50" marker-end="url(#ar)"/>
+          <line class="d-line" x1="434" y1="50" x2="463" y2="50" marker-end="url(#ar)"/>
+          <line class="d-line" x1="586" y1="50" x2="615" y2="50" marker-end="url(#ar)"/>
+          <line class="d-line" x1="738" y1="50" x2="767" y2="50" marker-end="url(#ar)"/>
+          <rect class="d-box" x="10" y="20" width="120" height="60" rx="10"/><text class="d-t" x="22" y="46">12 CSV</text><text class="d-s" x="22" y="66">generar_datos.py</text>
+          <rect class="d-box" x="162" y="20" width="120" height="60" rx="10"/><text class="d-t" x="174" y="46">Explorar</text><text class="d-s" x="174" y="66">02_explorar.py</text>
+          <rect class="d-box" x="314" y="20" width="120" height="60" rx="10"/><text class="d-t" x="326" y="46">Diagnosticar</text><text class="d-s" x="326" y="66">03_calidad.py</text>
+          <rect class="d-box" x="466" y="20" width="120" height="60" rx="10"/><text class="d-t" x="478" y="46">Limpiar</text><text class="d-s" x="478" y="66">04_limpiar.py</text>
+          <rect class="d-box" x="618" y="20" width="120" height="60" rx="10"/><text class="d-t" x="630" y="46">Analizar</text><text class="d-s" x="630" y="66">05, 06, 07</text>
+          <rect class="d-end" x="770" y="20" width="120" height="60" rx="10"/><text class="d-t" x="782" y="46">Resultados</text><text class="d-s" x="782" y="66">resultados\*.csv</text>
+          <text class="d-s" x="466" y="106">escribe ventas_limpias\ (Parquet)</text>
+          <text class="d-s" x="618" y="106">leen el Parquet</text>
+        </svg>
+      </div>
+      <div class="tbl"><table>
+        <thead><tr><th>Archivo del comprimido</th><th>Para qué sirve</th></tr></thead>
+        <tbody>
+          <tr><td><code>guia-practica.html</code></td><td>Esta guía</td></tr>
+          <tr><td><code>guia-cluster.html</code></td><td>Referencia de cómo se montó el cluster</td></tr>
+          <tr><td><code>requisitos.txt</code></td><td>Librerías de Python que necesitas</td></tr>
+          <tr><td><code>scripts\config.py</code></td><td><b>Lo único que editas:</b> IP y carpeta de tu grupo</td></tr>
+          <tr><td><code>scripts\generar_datos.py</code></td><td>Crea los CSV de ventas</td></tr>
+          <tr><td><code>scripts\01_…</code> a <code>07_…</code></td><td>Un script listo por cada paso de esta guía</td></tr>
+          <tr><td><code>scripts\mi_analisis.py</code></td><td>Tus ejercicios. Es el archivo que entregas</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 01 -->
+    <section id="preparar" data-step>
+      <div class="sec-head"><div class="num">01</div><div><h2>Prepara tu PC</h2><p class="sub">Tu PC es el <span class="chip c-client">Cliente</span>: envía las órdenes al cluster y recibe los resultados.</p></div></div>
+      <div class="prose"><p>Descomprime el archivo <code>practica-dask.zip</code> en <code>C:\practica-dask</code>. Luego abre PowerShell y crea un entorno de Python para la práctica:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre>cd C:\practica-dask
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+pip install -r requisitos.txt</pre></div>
+      <div class="note warn"><b>Tus versiones deben ser las mismas del cluster</b>Si tu profesor te da su propio <code>requisitos.txt</code>, usa ese. Si las versiones de tu PC no coinciden con las de los workers, el paso 3 te avisará con un error <code>Mismatched versions</code>.</div>
+      <div class="prose"><p>Si PowerShell no deja activar el entorno, ejecuta una vez <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code> y vuelve a intentarlo.</p>
+      <p><b>Cada vez que abras una ventana nueva</b> tendrás que volver a activar el entorno y entrar a la carpeta de scripts:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · al empezar cada sesión</div><button class="copy" type="button">Copiar</button></div>
+<pre>cd C:\practica-dask
+.\venv\Scripts\Activate.ps1
+cd scripts</pre></div>
+      <div class="done"><button type="button" data-done="preparar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 02 -->
+    <section id="config" data-step>
+      <div class="sec-head"><div class="num">02</div><div><h2>Configura config.py</h2><p class="sub">El único archivo que tienes que editar. Todos los demás scripts leen de aquí.</p></div></div>
+      <div class="prose"><p>Abre <code>scripts\config.py</code> con VS Code o con el Bloc de notas y cambia solo la parte de arriba. Con los datos que escribiste al principio de la página, debe quedar así:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>scripts\config.py</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># ======================= EDITA SOLO ESTA PARTE =======================</span>
+MODO = "cluster"
+SCHEDULER = "tcp://<span class="ip-s">192.168.1.10</span>:8786"
+DATOS_CLUSTER = r"<span class="dcl">\\192.168.1.10\datos\grupo01</span>"
+DATOS_LOCAL = r"datos"
+<span class="cm"># =====================================================================</span></pre></div>
+      <div class="concept">
+        <div><h3>MODO = "cluster"</h3><p>Usa el cluster de la clase. Los datos tienen que estar en la carpeta compartida para que los workers los lean.</p></div>
+        <div><h3>MODO = "local"</h3><p>Crea un mini cluster dentro de tu PC. Sirve para practicar en casa, con los datos en <code>scripts\datos</code>.</p></div>
+      </div>
+      <div class="note"><b>¿Por qué la ruta empieza con \\?</b>Los que leen los archivos son los workers, no tu PC. Una ruta como <code>C:\datos</code> o <code>Z:\</code> solo existe en tu máquina. La ruta de red <code>\\IP\carpeta</code> es la misma para todas las PCs.</div>
+      <div class="done"><button type="button" data-done="config" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 03 -->
+    <section id="conectar" data-step>
+      <div class="sec-head"><div class="num">03</div><div><h2>Conéctate al cluster</h2><p class="sub">Comprueba que ves a todos los workers y que te responden.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 01_conectar.py</pre>
+      <div class="out"><div class="tag">Ejemplo con 2 PCs de 2 workers cada una</div><pre>Conectado en modo 'cluster': 4 workers, 8 hilos
+Panel web: http://<span class="ip-s">192.168.1.10</span>:8787/status
+================================================================
+ Prueba: 200 tareas repartidas
+================================================================
+  PC-SALA-1              resolvió 104 tareas  ██████████████████████████
+  PC-SALA-2              resolvió  96 tareas  ████████████████████████
+================================================================
+ Versiones
+================================================================
+  Todas las PCs tienen las mismas versiones. ¡Listo para trabajar!</pre></div></div>
+      <div class="prose"><p>El script envía 200 tareas pequeñas y cada una devuelve el nombre de la PC que la resolvió. Si el trabajo se reparte entre varias PCs, el cluster funciona.</p>
+      <p><b>Abre el panel web</b> en el navegador: <code>http://<span class="ip-s">192.168.1.10</span>:8787/status</code>. Déjalo abierto durante toda la práctica para ver cómo trabajan los workers.</p></div>
+      <div class="done"><button type="button" data-done="conectar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 04 -->
+    <section id="generar" data-step>
+      <div class="sec-head"><div class="num">04</div><div><h2>Genera los datos</h2><p class="sub">Un año de ventas, un archivo por mes, directamente en la carpeta de tu grupo.</p></div></div>
+      <div class="prose"><p><b>Solo una persona por grupo</b> ejecuta este paso. Tarda de 1 a 4 minutos según la PC, y algo más si la red es lenta.</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python generar_datos.py --tamano mediano --salida "<span class="dcl">\\192.168.1.10\datos\grupo01</span>"</pre>
+      <div class="out"><div class="tag">Salida esperada (resumida)</div><pre>  ventas_2025_01.csv:    601,762 filas     69.7 MB  (3.1 s)
+  ventas_2025_02.csv:    ...
+  ventas_2025_12.csv:  1,203,555 filas    139.5 MB  (5.8 s)
+Listo: 9,230,099 filas, 1.07 GB en 44 s</pre></div></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Opción <code>--tamano</code></th><th>Filas</th><th>Disco</th><th>Úsalo para</th></tr></thead>
+        <tbody>
+          <tr><td><code>pequeno</code></td><td class="n">922.948</td><td class="n">110 MB</td><td>Probar en modo local, en casa</td></tr>
+          <tr><td><code>mediano</code></td><td class="n">9.230.099</td><td class="n">1,07 GB</td><td><b>La práctica en clase</b></td></tr>
+          <tr><td><code>grande</code></td><td class="n">~45 M</td><td class="n">~5,5 GB</td><td>Ver al cluster sufrir de verdad</td></tr>
+        </tbody>
+      </table></div>
+      <div class="concept">
+        <div><h3>Datos idénticos para todos</h3><p>El generador usa una semilla fija. Todos los grupos que elijan el mismo tamaño obtienen exactamente los mismos datos, así que pueden comparar sus respuestas.</p></div>
+        <div><h3>Datos sucios a propósito</h3><p>Traen montos vacíos, ventas duplicadas, devoluciones mezcladas y categorías mal escritas. Encontrarlos es parte del trabajo.</p></div>
+      </div>
+      <div class="note"><b>Si la carpeta no existe o no te deja escribir</b>Avisa a tu profesor: la carpeta compartida necesita permiso de escritura para tu grupo. Mientras tanto puedes avanzar en modo local con <code>--tamano pequeno --salida datos</code>.</div>
+      <h3>Qué contiene cada fila</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Columna</th><th>Ejemplo</th><th>Significado</th></tr></thead>
+        <tbody>
+          <tr><td><code>id_venta</code></td><td><code>V202503-0000123</code></td><td>Código único de la venta</td></tr>
+          <tr><td><code>fecha</code></td><td><code>2025-03-14 17:42:09</code></td><td>Momento de la venta, de 8:00 a 21:00</td></tr>
+          <tr><td><code>tienda</code> · <code>ciudad</code></td><td><code>T013</code> · Pasto</td><td>Dónde se vendió</td></tr>
+          <tr><td><code>categoria</code> · <code>producto</code></td><td>Hogar · Licuadora</td><td>Qué se vendió</td></tr>
+          <tr><td><code>cantidad</code></td><td><code>2</code></td><td>Unidades. <b>Negativa si es una devolución</b></td></tr>
+          <tr><td><code>precio_unitario</code></td><td><code>279000</code></td><td>Precio por unidad en pesos colombianos</td></tr>
+          <tr><td><code>descuento</code></td><td><code>0.15</code></td><td>15 % de descuento</td></tr>
+          <tr><td><code>monto</code></td><td><code>474300.0</code></td><td>Total cobrado = cantidad × precio × (1 − descuento)</td></tr>
+          <tr><td><code>metodo_pago</code></td><td>Tarjeta crédito</td><td>Efectivo, Tarjeta débito, Tarjeta crédito o Transferencia</td></tr>
+          <tr><td><code>cliente_id</code></td><td><code>C004512</code></td><td>Cliente registrado. Vacío si no se registró</td></tr>
+        </tbody>
+      </table></div>
+      <div class="prose"><p>Además se crean <code>tiendas.csv</code> (ciudad, región, metros cuadrados y año de apertura de cada tienda) y <code>productos.csv</code> (el catálogo con su precio base).</p></div>
+      <div class="done"><button type="button" data-done="generar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 05 -->
+    <section id="explorar" data-step>
+      <div class="sec-head"><div class="num">05</div><div><h2>Explora los datos</h2><p class="sub">Aprende cómo divide Dask los datos y por qué algunas operaciones tardan más que otras.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 02_explorar.py</pre>
+      <div class="out"><div class="tag">Fragmento de la salida</div><pre>  ⏱  head(): 0.71 s
+  ⏱  len(): 3.22 s
+  Filas totales: 9,230,099</pre></div></div>
+      <div class="concept">
+        <div><h3>Particiones</h3><p>Dask corta los datos en trozos llamados particiones. Cada worker procesa algunos trozos al mismo tiempo que los demás. Por eso varias PCs pueden trabajar a la vez.</p></div>
+        <div><h3>Evaluación perezosa</h3><p><code>dd.read_csv(...)</code> no lee nada: solo arma un plan. El trabajo real empieza cuando pides un resultado con <code>.compute()</code>, <code>len()</code> o <code>.head()</code>.</p></div>
+        <div><h3>¿Por qué head() es rápido?</h3><p>Solo necesita leer el primer trozo del primer archivo.</p></div>
+        <div><h3>¿Por qué len() tarda más?</h3><p>Para contar las filas tiene que leer los 12 archivos completos. Mira el panel web mientras se ejecuta.</p></div>
+      </div>
+      <div class="task"><div class="t-lbl">Tu turno</div>
+        <ol><li>¿Cuántas tiendas distintas hay? Pista: <code>ventas["tienda"].nunique().compute()</code></li>
+        <li>¿Cuántas ventas hubo en cada ciudad? Pista: <code>value_counts()</code></li></ol>
+        <p>Escríbelo al final de <code>02_explorar.py</code>, donde dice <code>TU TURNO</code>.</p></div>
+      <div class="done"><button type="button" data-done="explorar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 06 -->
+    <section id="calidad" data-step>
+      <div class="sec-head"><div class="num">06</div><div><h2>Diagnostica los errores</h2><p class="sub">Antes de limpiar, mide cuánto hay que limpiar.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 03_calidad.py</pre></div>
+      <div class="prose"><h3>Punto de control</h3><p>Si generaste los datos bien, debes obtener <b>exactamente</b> estas cifras:</p></div>
+      <div class="tbl"><table class="check-tbl">
+        <thead><tr><th>Problema</th><th>Tamaño mediano</th><th>Tamaño pequeño</th></tr></thead>
+        <tbody>
+          <tr><td>Filas totales</td><td class="n">9,230,099</td><td class="n">922,948</td></tr>
+          <tr><td>Montos vacíos</td><td class="n">73,369</td><td class="n">7,341</td></tr>
+          <tr><td>Devoluciones (monto &lt; 0)</td><td class="n">54,405</td><td class="n">5,476</td></tr>
+          <tr><td>Ventas duplicadas</td><td class="n">27,599</td><td class="n">2,699</td></tr>
+          <tr><td>Valores distintos de categoría</td><td class="n">40</td><td class="n">40</td></tr>
+        </tbody>
+      </table></div>
+      <div class="prose"><h3>Las dos ideas clave del script</h3></div>
+      <div class="term"><div class="term-top"><div class="where">Fragmento de 03_calidad.py</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># 1. dd.compute(a, b, c) calcula todo leyendo los datos UNA sola vez</span>
+filas, vacios, devoluciones, duplicadas, sin_cliente = dd.compute(
+    ventas.shape[0],
+    ventas["monto"].isna().sum(),
+    (ventas["monto"] &lt; 0).sum(),
+    <span class="cm"># 2. map_partitions: aplica una función de pandas a cada trozo por separado.</span>
+    <span class="cm">#    Los duplicados siempre están en el mismo mes, así que no hay que</span>
+    <span class="cm">#    comparar filas de trozos distintos (eso sería mucho más lento).</span>
+    ventas.map_partitions(lambda p: p.duplicated(subset="id_venta").sum()).sum(),
+    ventas["cliente_id"].isna().sum(),
+)</pre></div>
+      <div class="task"><div class="t-lbl">Para pensar</div><p>Prueba a calcular las cinco cifras con cinco <code>.compute()</code> separados. ¿Cuánto tarda comparado con un solo <code>dd.compute()</code>? ¿Por qué?</p></div>
+      <div class="done"><button type="button" data-done="calidad" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 07 -->
+    <section id="limpiar" data-step>
+      <div class="sec-head"><div class="num">07</div><div><h2>Limpia y guarda en Parquet</h2><p class="sub">Los workers limpian cada trozo en paralelo y lo guardan en un formato mucho más rápido.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 04_limpiar.py</pre></div>
+      <div class="prose"><h3>Qué hace, línea por línea</h3></div>
+      <div class="term"><div class="term-top"><div class="where">Fragmento de 04_limpiar.py</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># 1. Quitar ventas sin monto</span>
+ventas = ventas.dropna(subset=["monto"])
+
+<span class="cm"># 2. Quitar duplicados dentro de cada mes</span>
+ventas = ventas.map_partitions(lambda p: p.drop_duplicates(subset="id_venta"))
+
+<span class="cm"># 3. " ALIMENTOS", "alimentos " y "Alimentos" pasan a ser "Alimentos"</span>
+ventas["categoria"] = ventas["categoria"].str.strip().str.capitalize()
+
+<span class="cm"># 4. Columnas nuevas para el análisis</span>
+ventas["anio"] = ventas["fecha"].dt.year
+ventas["mes"] = ventas["fecha"].dt.month
+ventas["es_devolucion"] = ventas["monto"] &lt; 0
+
+<span class="cm"># 5. Guardar: cada worker escribe sus propios trozos en la carpeta compartida</span>
+ventas.to_parquet(ruta("ventas_limpias"), write_index=False, overwrite=True)</pre></div>
+      <div class="prose"><h3>Punto de control</h3></div>
+      <div class="tbl"><table class="check-tbl">
+        <thead><tr><th>Verificación</th><th>Tamaño mediano</th><th>Tamaño pequeño</th></tr></thead>
+        <tbody>
+          <tr><td>Filas limpias</td><td class="n">9,129,338</td><td class="n">912,929</td></tr>
+          <tr><td>De ellas, devoluciones</td><td class="n">54,215</td><td class="n">5,464</td></tr>
+          <tr><td>Categorías</td><td class="n">8</td><td class="n">8</td></tr>
+        </tbody>
+      </table></div>
+      <div class="concept">
+        <div><h3>¿Por qué no borramos las devoluciones?</h3><p>Son información real. Las marcamos con <code>es_devolucion</code> para separarlas cuando analicemos las ventas y para estudiarlas aparte.</p></div>
+        <div><h3>¿Por qué Parquet?</h3><p>Guarda los datos por columnas, comprimidos y con su tipo. Ocupa menos, se lee varias veces más rápido y puedes leer solo las columnas que necesitas.</p></div>
+      </div>
+      <div class="task"><div class="t-lbl">Para pensar</div><p>Mira el tamaño de la carpeta <code>ventas_limpias</code> y compáralo con el de los 12 CSV. ¿Cuánto espacio ahorra Parquet?</p></div>
+      <div class="done"><button type="button" data-done="limpiar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 08 -->
+    <section id="analizar" data-step>
+      <div class="sec-head"><div class="num">08</div><div><h2>Analiza</h2><p class="sub">Las primeras respuestas para la gerencia.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 05_analizar.py</pre>
+      <div class="out"><div class="tag">Fragmento: ventas por mes (tamaño mediano)</div><pre>  2025-01     193,229,410,740  ███████████████████
+  2025-06     271,101,607,490  ████████████████████████████
+  2025-11     291,343,382,100  ██████████████████████████████
+  2025-12     386,536,526,010  ████████████████████████████████████████</pre></div></div>
+      <div class="concept">
+        <div><h3>persist()</h3><p>Carga los datos limpios en la memoria de los workers una sola vez. Las preguntas siguientes ya no leen el disco y tardan menos de un segundo.</p></div>
+        <div><h3>groupby + compute</h3><p>Cada worker resume sus trozos y Dask combina los resúmenes parciales. A tu PC solo llega una tabla pequeña con el resultado.</p></div>
+      </div>
+      <div class="note"><b>Tus resultados se guardan en tu PC</b>Cada respuesta se guarda como CSV en <code>scripts\resultados\</code>. Puedes abrirlos en Excel para hacer gráficos para tu informe.</div>
+      <div class="task"><div class="t-lbl">Tu turno · en mi_analisis.py</div>
+        <ol><li>Las 10 tiendas que más venden, con su ciudad.</li>
+        <li>El ticket promedio de cada método de pago. ¿Cuál es el más alto y por qué crees que pasa?</li>
+        <li>El porcentaje de ventas con descuento cada mes. ¿Qué mes destaca? ¿Qué evento comercial ocurre ese mes?</li></ol></div>
+      <div class="done"><button type="button" data-done="analizar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 09 -->
+    <section id="combinar" data-step>
+      <div class="sec-head"><div class="num">09</div><div><h2>Combina tablas</h2><p class="sub">Une las ventas con los datos de las tiendas para responder por región.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 06_combinar.py</pre>
+      <div class="out"><div class="tag">Ventas por región (tamaño mediano)</div><pre>region
+Andina      1,613,130,805,800
+Pacífica      722,009,474,330
+Caribe        459,792,565,210
+Orinoquía     156,131,309,565</pre></div></div>
+      <div class="concept">
+        <div><h3>Tabla grande + tabla pequeña</h3><p>Las ventas tienen 9 millones de filas y las tiendas solo 40. Dask envía la tabla pequeña a cada worker, que la une con sus trozos de ventas sin mover datos entre PCs. Esto se llama <em>broadcast join</em>.</p></div>
+        <div><h3>Pandas para lo pequeño</h3><p><code>tiendas.csv</code> se lee con pandas normal. Usar Dask para 40 filas solo añadiría trabajo de coordinación.</p></div>
+      </div>
+      <div class="task"><div class="t-lbl">Tu turno · en mi_analisis.py</div>
+        <ol start="4"><li>Las 5 tiendas que más venden <b>por metro cuadrado</b>. ¿Son las mismas del ejercicio 1? ¿Qué te dice eso?</li>
+        <li>La tasa de devolución de cada categoría (devoluciones ÷ ventas × 100). ¿Qué se devuelve más?</li></ol></div>
+      <div class="done"><button type="button" data-done="combinar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 10 -->
+    <section id="rendimiento" data-step>
+      <div class="sec-head"><div class="num">10</div><div><h2>Mide el rendimiento</h2><p class="sub">¿Vale la pena el cluster? La misma pregunta, resuelta de cuatro formas.</p></div></div>
+      <div class="prose"><p>Ejecuta el script dos veces: primero con <code>MODO = "cluster"</code> y después con <code>MODO = "local"</code> en <code>config.py</code>. En modo local, copia antes los datos a <code>scripts\datos</code> o genéralos ahí.</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python 07_rendimiento.py</pre>
+      <div class="out"><div class="tag">Ejemplo en modo local (1 PC, 8 hilos, tamaño mediano)</div><pre>  Dask + CSV                      3.18 s     0.6× vs pandas
+  Dask + Parquet                  0.31 s     6.3× vs pandas
+  Dask + Parquet 2 columnas       0.27 s     7.2× vs pandas
+  pandas en 1 PC                  1.94 s     1.0× vs pandas</pre></div></div>
+      <div class="prose"><h3>Anota tus tiempos</h3></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Prueba</th><th>Cluster (s)</th><th>Local (s)</th></tr></thead>
+        <tbody>
+          <tr><td>Dask + CSV</td><td></td><td></td></tr>
+          <tr><td>Dask + Parquet</td><td></td><td></td></tr>
+          <tr><td>Dask + Parquet 2 columnas</td><td></td><td></td></tr>
+          <tr><td>pandas en 1 PC</td><td></td><td></td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn"><b>Toda la clase comparte el cluster</b>Si varios grupos ejecutan a la vez, los tiempos suben. Repite cada medición dos o tres veces y anota el mejor tiempo.</div>
+      <div class="task"><div class="t-lbl">Para pensar</div>
+        <ul><li>¿Por qué leer CSV es tanto más lento que leer Parquet?</li>
+        <li>¿Por qué pandas puede ganarle a Dask en algunos casos? Piensa en el trabajo de coordinar y en el tráfico de red.</li>
+        <li>Si los datos fueran de 50 GB y tu PC tuviera 16 GB de RAM, ¿podría hacerlo pandas?</li></ul></div>
+      <div class="done"><button type="button" data-done="rendimiento" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 11 -->
+    <section id="entrega" data-step>
+      <div class="sec-head"><div class="num">11</div><div><h2>Tu análisis y entrega</h2><p class="sub">Completa mi_analisis.py con todo lo aprendido.</p></div></div>
+      <div class="prose"><p><code>mi_analisis.py</code> ya conecta con el cluster y carga los datos limpios. Solo tienes que reemplazar cada <code>None</code> por tu código. Ejecútalo tantas veces como quieras:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">Tu PC</span>PowerShell · en scripts</div><button class="copy" type="button">Copiar</button></div>
+<pre>python mi_analisis.py</pre></div>
+      <div class="task"><div class="t-lbl">Reto final</div><p>¿Cuántos clientes registrados compraron <b>en los 12 meses</b> del año? Muestra 5 ejemplos.</p>
+        <p>Pista: quita las ventas sin cliente, quédate con las combinaciones únicas de <code>cliente_id</code>, <code>anio</code> y <code>mes</code>, y cuenta cuántos meses tiene cada cliente.</p></div>
+      <div class="prose"><h3>Qué entregar</h3>
+        <ol>
+          <li>Tu archivo <code>mi_analisis.py</code> completo, con los nombres del grupo arriba.</li>
+          <li>La carpeta <code>resultados\</code> con los CSV generados.</li>
+          <li>La tabla de tiempos del paso 10.</li>
+          <li>Un párrafo de conclusiones: ¿cuándo vale la pena usar un cluster y cuándo no?</li>
+        </ol></div>
+      <div class="done"><button type="button" data-done="entrega" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 12 -->
+    <section id="problemas">
+      <div class="sec-head"><div class="num">12</div><div><h2>Si algo falla</h2><p class="sub">Los errores más comunes en esta práctica.</p></div></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Mensaje</th><th>Qué significa</th><th>Qué hacer</th></tr></thead>
+        <tbody>
+          <tr><td><code>Timed out trying to connect</code></td><td>Tu PC no llega al scheduler</td><td>Revisa <code>SCHEDULER</code> en config.py y prueba <code>Test-NetConnection <span class="ip-s">192.168.1.10</span> -Port 8786</code>.</td></tr>
+          <tr><td><code>Mismatched versions</code></td><td>Tus librerías no son las del cluster</td><td>Reinstala con el <code>requisitos.txt</code> de tu profesor (paso 1).</td></tr>
+          <tr><td><code>resolved to no files</code></td><td>No encuentra los CSV en la carpeta</td><td>Revisa <code>DATOS_CLUSTER</code>. Comprueba con <code>dir "<span class="dcl">\\192.168.1.10\datos\grupo01</span>"</code>.</td></tr>
+          <tr><td><code>FileNotFoundError</code> con <code>ventas_limpias</code></td><td>Aún no existe el Parquet</td><td>Ejecuta primero <code>04_limpiar.py</code>.</td></tr>
+          <tr><td><code>PermissionError</code> al guardar</td><td>No hay permiso de escritura en la carpeta compartida</td><td>Avisa a tu profesor.</td></tr>
+          <tr><td><code>ModuleNotFoundError: config</code></td><td>Estás en otra carpeta</td><td>Ejecuta los scripts desde <code>C:\practica-dask\scripts</code>.</td></tr>
+          <tr><td><code>KilledWorker</code></td><td>Un worker se quedó sin memoria</td><td>Avisa a tu profesor. Puede que muchos grupos estén usando el cluster a la vez.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="prose"><h3>Resumen de comandos</h3></div>
+      <div class="term"><div class="term-top"><div class="where">Toda la práctica, en orden</div><button class="copy" type="button">Copiar</button></div>
+<pre>cd C:\practica-dask
+.\venv\Scripts\Activate.ps1
+cd scripts
+
+python 01_conectar.py
+python generar_datos.py --tamano mediano --salida "<span class="dcl">\\192.168.1.10\datos\grupo01</span>"
+python 02_explorar.py
+python 03_calidad.py
+python 04_limpiar.py
+python 05_analizar.py
+python 06_combinar.py
+python 07_rendimiento.py
+python mi_analisis.py</pre></div>
+    </section>
+  </main>
+</div>
+
+<footer>Práctica de procesamiento distribuido con Dask. Mercado Andino es una empresa ficticia y sus datos son simulados.</footer>
+
+<script>
+(function(){
+  var KEY="practica-dask-v1";
+  var state={};
+  try{ state=JSON.parse(localStorage.getItem(KEY)||"{}")||{}; }catch(e){ state={}; }
+  function save(){ try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){} }
+
+  var ip=document.getElementById("ip"), grupo=document.getElementById("grupo"), share=document.getElementById("share");
+  [ip,grupo,share].forEach(function(el){ if(state[el.id]) el.value=state[el.id]; });
+  function val(el){ return el.value.trim()||el.defaultValue; }
+  function apply(){
+    var dcl=val(share).replace(/\\+$/,"")+"\\"+val(grupo);
+    document.querySelectorAll(".ip-s").forEach(function(e){ e.textContent=val(ip); });
+    document.querySelectorAll(".grp").forEach(function(e){ e.textContent=val(grupo); });
+    document.querySelectorAll(".dcl").forEach(function(e){ e.textContent=dcl; });
+  }
+  [ip,grupo,share].forEach(function(el){ el.addEventListener("input",function(){ state[el.id]=el.value; save(); apply(); }); });
+  apply();
+
+  document.querySelectorAll(".term").forEach(function(t){
+    var btn=t.querySelector(".copy"), pre=t.querySelector("pre");
+    if(!btn||!pre) return;
+    btn.addEventListener("click",function(){
+      var txt=pre.innerText;
+      function ok(){ btn.textContent="Copiado"; setTimeout(function(){ btn.textContent="Copiar"; },1500); }
+      function fallback(){
+        var r=document.createRange(); r.selectNodeContents(pre);
+        var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent="Pulsa Ctrl+C"; setTimeout(function(){ btn.textContent="Copiar"; },2500);
+      }
+      try{ navigator.clipboard.writeText(txt).then(ok,fallback); }catch(e){ fallback(); }
+    });
+  });
+
+  var btns=document.querySelectorAll("[data-done]");
+  var txt=document.getElementById("prog-txt"), bar=document.getElementById("prog-bar");
+  function render(){
+    var n=0;
+    btns.forEach(function(b){
+      var d=!!state["done-"+b.dataset.done];
+      b.setAttribute("aria-pressed",d?"true":"false");
+      b.textContent=d?"Paso hecho ✓":"Marcar paso como hecho";
+      if(d) n++;
+    });
+    txt.textContent=n+" de "+btns.length+" pasos";
+    bar.style.width=(n/btns.length*100)+"%";
+  }
+  btns.forEach(function(b){ b.addEventListener("click",function(){ var k="done-"+b.dataset.done; state[k]=!state[k]; save(); render(); }); });
+  render();
+
+  var links=document.querySelectorAll("#toc a"), map={};
+  links.forEach(function(a){ map[a.getAttribute("href").slice(1)]=a; });
+  if("IntersectionObserver" in window){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ links.forEach(function(a){a.classList.remove("on");}); var a=map[en.target.id]; if(a) a.classList.add("on"); }
+      });
+    },{rootMargin:"-30% 0px -60% 0px"});
+    document.querySelectorAll("main section").forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
+
+</body>
+</html>

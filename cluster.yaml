@@ -1,7 +1,7 @@
 red_lan: 172.20.10.0/28
 puerto_scheduler: 8786
 puerto_dashboard: 8787
-coordinadora: linuxMint
+coordinadora: worker_rg
 maquinas:
   linuxMint:
     so: linux

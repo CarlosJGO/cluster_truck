@@ -1,0 +1,19 @@
+PRÁCTICA: PROCESAR VENTAS CON UN CLUSTER DE DASK
+=================================================
+
+1. Descomprime esta carpeta en  C:\practica-dask
+2. Abre con doble clic el archivo  guia-practica.html  y sigue los pasos.
+
+Contenido
+---------
+guia-practica.html      La guía paso a paso de esta práctica (empieza aquí)
+guia-cluster.html       Referencia: cómo se montó el cluster
+requisitos.txt          Librerías de Python necesarias
+scripts\config.py       Lo único que tienes que editar: IP y carpeta de tu grupo
+scripts\generar_datos.py  Genera los datos de ventas
+scripts\01_... a 07_...   Un script por paso de la guía
+scripts\mi_analisis.py  Tus ejercicios: este es el archivo que entregas
+
+Todos los scripts se ejecutan desde la carpeta scripts:
+    cd C:\practica-dask\scripts
+    python 01_conectar.py

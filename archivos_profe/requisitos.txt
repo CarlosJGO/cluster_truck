@@ -1,0 +1,8 @@
+# Versiones con las que se probó esta práctica (Python 3.14).
+# IMPORTANTE: tu PC debe tener las MISMAS versiones que el cluster.
+# Si tu profesor te da otro requisitos.txt, usa el suyo en lugar de este.
+dask[complete]==2026.8.0
+distributed==2026.8.0
+pandas==3.1.0
+numpy==2.5.4
+pyarrow==26.0.1

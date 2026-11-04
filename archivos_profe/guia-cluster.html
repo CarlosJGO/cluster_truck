@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>Cluster Dask en red</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: índice lateral fijo + columna de lectura; cada paso es una "estación" con chip de máquina y terminal */
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --ink:#142230; --muted:#56687A; --line:#D5DEE6;
+  --accent:#0B6E78; --accent-soft:#DDEFF0;
+  --term-bg:#0F1C26; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#B4590A; --r-work:#0B6E78; --r-client:#5B4FB0; --r-all:#56687A;
+  --warn-bg:#FFF3E3; --warn-line:#E8B26A; --ok:#2E7D4F;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D161D; --surface:#13212B; --ink:#E3ECF2; --muted:#93A6B5; --line:#24394A;
+  --accent:#4FC1C9; --accent-soft:#12343A;
+  --term-bg:#08121A; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#F0A050; --r-work:#4FC1C9; --r-client:#A99CF0; --r-all:#93A6B5;
+  --warn-bg:#2B2113; --warn-line:#8A6326; --ok:#5CC48A; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0D161D; --surface:#13212B; --ink:#E3ECF2; --muted:#93A6B5; --line:#24394A;
+  --accent:#4FC1C9; --accent-soft:#12343A;
+  --term-bg:#08121A; --term-fg:#D7E4EC; --term-dim:#7F97A8; --term-hl:#7FD9DF;
+  --r-sched:#F0A050; --r-work:#4FC1C9; --r-client:#A99CF0; --r-all:#93A6B5;
+  --warn-bg:#2B2113; --warn-line:#8A6326; --ok:#5CC48A; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16.5px;line-height:1.65;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);padding:.1em .35em;border-radius:4px}
+
+.shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:56px}
+@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr);gap:0}.toc{display:none}}
+
+/* Hero */
+.hero{max-width:1180px;margin:0 auto;padding-block:56px 40px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:center}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);padding-block:32px 24px}}
+.eyebrow{font-family:var(--f-mono);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:clamp(34px,5vw,58px);font-weight:800;letter-spacing:-.02em;margin-top:12px}
+.hero p{color:var(--muted);font-size:18px;max-width:52ch;margin:16px 0 0}
+.ipbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+.ipbox h2{font-size:19px}
+.ipbox p{font-size:14.5px;color:var(--muted);margin:6px 0 16px}
+.ipgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:480px){.ipgrid{grid-template-columns:minmax(0,1fr)}}
+.ipgrid label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+.ipgrid input{font-family:var(--f-mono);font-size:14.5px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
+.ipgrid .full{grid-column:1/-1}
+.hint{font-size:12.5px;color:var(--muted);margin-top:10px}
+
+/* TOC */
+.toc{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding-top:28px;max-height:100vh;overflow:auto}
+.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;counter-reset:t}
+.toc a{display:flex;gap:10px;text-decoration:none;color:var(--muted);font-size:14px;padding:6px 10px;border-radius:8px;line-height:1.35}
+.toc a:hover{background:var(--surface);color:var(--ink)}
+.toc a.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.toc .n{font-family:var(--f-mono);font-size:12px;color:var(--accent);min-width:20px;padding-top:1px}
+.toc .lbl{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px 10px}
+.progress{margin:18px 10px 0;font-size:13px;color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+
+/* Sections */
+main{min-width:0}
+section{padding-block:40px;border-top:1px solid var(--line)}
+section:first-child{border-top:0;padding-top:28px}
+.sec-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}
+.num{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1;color:var(--accent);min-width:58px}
+.sec-head h2{font-size:clamp(24px,3vw,32px);font-weight:700;letter-spacing:-.01em}
+.sec-head .sub{color:var(--muted);margin:6px 0 0;font-size:15.5px}
+.prose{max-width:68ch}
+.prose p{margin:0 0 14px}
+.prose ul,.prose ol{margin:0 0 14px;padding-left:22px}
+.prose li{margin-bottom:6px}
+h3{font-size:19px;margin:26px 0 10px}
+
+/* Role chips */
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.c-sched{color:var(--r-sched)} .c-work{color:var(--r-work)} .c-client{color:var(--r-client)} .c-all{color:var(--r-all)}
+
+/* Terminal */
+.term{margin:14px 0 18px;border-radius:12px;overflow:hidden;background:var(--term-bg);border:1px solid var(--line);max-width:860px}
+.term-top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.term-top .where{font-family:var(--f-mono);font-size:12px;color:var(--term-dim);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.term-top .where .chip{background:transparent}
+.term .c-sched{color:#F0A050}.term .c-work{color:#4FC1C9}.term .c-client{color:#B9AEF5}.term .c-all{color:#A9BAC7}
+.copy{font-family:var(--f-mono);font-size:12px;background:transparent;color:var(--term-fg);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 10px;cursor:pointer}
+.copy:hover{border-color:var(--term-hl);color:var(--term-hl)}
+.term pre{margin:0;padding:14px 16px;overflow-x:auto;color:var(--term-fg);font-family:var(--f-mono);font-size:13.5px;line-height:1.6}
+.term .cm{color:var(--term-dim)}
+.term .ip-s,.term .ip-w,.term .share{color:var(--term-hl);font-weight:600}
+.out{border-top:1px dashed rgba(255,255,255,.12)}
+.out pre{color:var(--term-dim);font-size:12.5px}
+.out .tag{font-family:var(--f-mono);font-size:11px;color:var(--term-dim);padding:8px 16px 0;letter-spacing:.06em;text-transform:uppercase}
+
+/* Callouts */
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;margin:16px 0;max-width:68ch;font-size:15.5px}
+.note.warn{border-color:var(--warn-line);background:var(--warn-bg)}
+.note b:first-child{display:block;font-family:var(--f-display);font-size:15.5px;margin-bottom:2px}
+
+/* Diagram */
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto;margin:10px 0 18px}
+.diagram svg{display:block;width:100%;min-width:620px;height:auto}
+.d-box{fill:var(--bg);stroke-width:2}
+.d-t{font-family:var(--f-display);font-weight:700;font-size:15px;fill:var(--ink)}
+.d-s{font-family:var(--f-mono);font-size:11.5px;fill:var(--muted)}
+.d-l{font-family:var(--f-mono);font-size:11px;fill:var(--muted)}
+.d-line{stroke:var(--muted);stroke-width:1.6;fill:none}
+.d-dash{stroke:var(--r-work);stroke-width:1.6;stroke-dasharray:5 5;fill:none}
+
+/* Tables */
+.tbl{overflow-x:auto;margin:12px 0 18px;max-width:860px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+
+/* Checklist */
+.check{list-style:none;padding:0;margin:12px 0;display:flex;flex-direction:column;gap:8px;max-width:68ch}
+.check label{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:pointer}
+.check input{margin-top:5px;accent-color:var(--accent);width:17px;height:17px;flex:none}
+.check input:checked + span{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+
+.roles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:16px 0}
+@media (max-width:700px){.roles{grid-template-columns:minmax(0,1fr)}}
+.role{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.role h3{margin:10px 0 6px;font-size:18px}
+.role p{margin:0;font-size:14.5px;color:var(--muted)}
+
+.done{display:flex;gap:10px;align-items:center;margin-top:18px;font-size:14px;color:var(--muted)}
+.done button{font-family:var(--f-body);font-size:14px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.done button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+
+footer{max-width:1180px;margin:40px auto 0;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:20px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<header class="hero">
+  <div>
+    <div class="eyebrow">Guía práctica · Python + Dask · Windows</div>
+    <h1>Monta tu propio cluster de procesamiento con varias PCs</h1>
+    <p>Aquí aprenderás, paso a paso, a unir varias computadoras de tu red para que trabajen juntas procesando datos con Python. Al final tendrás un cluster funcionando y un script que reparte el trabajo entre todas.</p>
+  </div>
+  <div class="ipbox">
+    <h2>Escribe aquí las IP de tu red</h2>
+    <p>Todos los comandos de la guía se actualizan con tus datos, así puedes copiarlos y pegarlos sin editar nada.</p>
+    <div class="ipgrid">
+      <label for="ip-sched">IP del scheduler<input id="ip-sched" value="192.168.1.10" spellcheck="false"></label>
+      <label for="ip-work">IP de un worker (ejemplo)<input id="ip-work" value="192.168.1.21" spellcheck="false"></label>
+      <label for="share" class="full">Carpeta compartida de datos<input id="share" value="\\192.168.1.10\datos" spellcheck="false"></label>
+    </div>
+    <div class="hint">¿No sabes tu IP? Lo verás en el paso 3.</div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="toc" aria-label="Índice">
+    <div class="lbl">Contenido</div>
+    <ol id="toc">
+      <li><a href="#idea"><span class="n">00</span>La idea general</a></li>
+      <li><a href="#requisitos"><span class="n">01</span>Lo que necesitas</a></li>
+      <li><a href="#python"><span class="n">02</span>Python igual en todas</a></li>
+      <li><a href="#red"><span class="n">03</span>Preparar la red</a></li>
+      <li><a href="#firewall"><span class="n">04</span>Abrir el firewall</a></li>
+      <li><a href="#scheduler"><span class="n">05</span>Encender el scheduler</a></li>
+      <li><a href="#workers"><span class="n">06</span>Conectar los workers</a></li>
+      <li><a href="#verificar"><span class="n">07</span>Comprobar que funciona</a></li>
+      <li><a href="#datos"><span class="n">08</span>Compartir los datos</a></li>
+      <li><a href="#trabajo"><span class="n">09</span>Tu primer trabajo real</a></li>
+      <li><a href="#auto"><span class="n">10</span>Arranque automático</a></li>
+      <li><a href="#problemas"><span class="n">11</span>Si algo falla</a></li>
+      <li><a href="#seguridad"><span class="n">12</span>Seguridad</a></li>
+      <li><a href="#resumen"><span class="n">13</span>Resumen rápido</a></li>
+    </ol>
+    <div class="progress">Tu avance: <span id="prog-txt">0 de 12 pasos</span><div class="bar"><i id="prog-bar"></i></div></div>
+  </nav>
+
+  <main>
+    <!-- 00 -->
+    <section id="idea">
+      <div class="sec-head"><div class="num">00</div><div><h2>La idea general</h2><p class="sub">Antes de tocar nada, entiende qué piezas vas a montar y cómo se hablan.</p></div></div>
+      <div class="prose">
+        <p>Un cluster de Dask tiene tres tipos de participantes. Piensa en una cocina de restaurante: alguien toma los pedidos, un jefe de cocina reparte el trabajo y varios cocineros cocinan al mismo tiempo.</p>
+      </div>
+      <div class="roles">
+        <div class="role"><span class="chip c-client">Cliente</span><h3>Tu PC con el script</h3><p>Es donde escribes y ejecutas tu programa en Python. Le dice al scheduler qué trabajo hay que hacer y recibe los resultados.</p></div>
+        <div class="role"><span class="chip c-sched">Scheduler</span><h3>El jefe de cocina</h3><p>Hay uno solo. Divide el trabajo en tareas pequeñas, decide qué worker hace cada una y vigila que todo termine.</p></div>
+        <div class="role"><span class="chip c-work">Worker</span><h3>Los cocineros</h3><p>Puede haber muchos, uno o varios por PC. Ejecutan las tareas con su CPU y su memoria y devuelven los resultados.</p></div>
+      </div>
+      <div class="diagram" role="img" aria-label="Diagrama: el cliente se conecta al scheduler por el puerto 8786; el panel web usa el puerto 8787; el scheduler reparte tareas a tres workers que intercambian datos entre sí y leen de una carpeta compartida.">
+        <svg viewBox="0 0 760 390" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+          <!-- lines -->
+          <line class="d-line" x1="210" y1="65" x2="292" y2="65" marker-end="url(#ar)"/>
+          <text class="d-l" x="226" y="56">:8786</text>
+          <line class="d-line" x1="550" y1="65" x2="468" y2="65" marker-end="url(#ar)"/>
+          <text class="d-l" x="490" y="56">:8787</text>
+          <path class="d-line" d="M380 100 L380 150 L145 150 L145 197" marker-end="url(#ar)"/>
+          <line class="d-line" x1="380" y1="150" x2="380" y2="197" marker-end="url(#ar)"/>
+          <path class="d-line" d="M380 150 L615 150 L615 197" marker-end="url(#ar)"/>
+          <text class="d-l" x="392" y="143">reparte tareas</text>
+          <line class="d-dash" x1="230" y1="235" x2="295" y2="235"/>
+          <line class="d-dash" x1="465" y1="235" x2="530" y2="235"/>
+          <text class="d-l" x="236" y="225">datos</text>
+          <text class="d-l" x="471" y="225">datos</text>
+          <line class="d-line" x1="145" y1="270" x2="145" y2="322" marker-end="url(#ar)"/>
+          <line class="d-line" x1="380" y1="270" x2="380" y2="322" marker-end="url(#ar)"/>
+          <line class="d-line" x1="615" y1="270" x2="615" y2="322" marker-end="url(#ar)"/>
+          <!-- boxes -->
+          <rect class="d-box" x="40" y="30" width="170" height="70" rx="10" stroke="var(--r-client)"/>
+          <text class="d-t" x="56" y="60">Cliente</text><text class="d-s" x="56" y="82">tu_script.py</text>
+          <rect class="d-box" x="295" y="30" width="170" height="70" rx="10" stroke="var(--r-sched)"/>
+          <text class="d-t" x="311" y="60">Scheduler</text><text class="d-s ip-s" x="311" y="82">192.168.1.10</text>
+          <rect class="d-box" x="550" y="30" width="170" height="70" rx="10" stroke="var(--line)"/>
+          <text class="d-t" x="566" y="60">Panel web</text><text class="d-s" x="566" y="82">en tu navegador</text>
+          <rect class="d-box" x="60" y="200" width="170" height="70" rx="10" stroke="var(--r-work)"/>
+          <text class="d-t" x="76" y="230">Worker PC 1</text><text class="d-s" x="76" y="252">2 procesos × 2 hilos</text>
+          <rect class="d-box" x="295" y="200" width="170" height="70" rx="10" stroke="var(--r-work)"/>
+          <text class="d-t" x="311" y="230">Worker PC 2</text><text class="d-s" x="311" y="252">2 procesos × 2 hilos</text>
+          <rect class="d-box" x="530" y="200" width="170" height="70" rx="10" stroke="var(--r-work)"/>
+          <text class="d-t" x="546" y="230">Worker PC 3</text><text class="d-s" x="546" y="252">2 procesos × 2 hilos</text>
+          <rect x="40" y="325" width="680" height="46" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+          <text class="d-t" x="58" y="353">Datos compartidos</text>
+          <text class="d-s share" x="230" y="353">\\192.168.1.10\datos</text>
+        </svg>
+      </div>
+      <div class="note"><b>Puede ser la misma PC</b>Una sola computadora puede ser a la vez cliente, scheduler y worker. Para empezar, lo normal es usar tu PC principal como scheduler y cliente, y las demás como workers.</div>
+    </section>
+
+    <!-- 01 -->
+    <section id="requisitos" data-step>
+      <div class="sec-head"><div class="num">01</div><div><h2>Lo que necesitas</h2><p class="sub">Marca cada punto cuando lo tengas listo. Tu avance se guarda en este navegador.</p></div></div>
+      <ul class="check" id="reqs">
+        <li><label><input type="checkbox" id="rq1"><span><b>Dos o más PCs con Windows</b> encendidas y en la <b>misma red</b> (mismo router o switch). Con cable va mejor que por WiFi.</span></label></li>
+        <li><label><input type="checkbox" id="rq2"><span><b>Permisos de administrador</b> en cada PC para instalar programas y abrir el firewall.</span></label></li>
+        <li><label><input type="checkbox" id="rq3"><span><b>La misma versión de Python</b> en todas las máquinas, por ejemplo 3.14 en todas. Es la regla más importante.</span></label></li>
+        <li><label><input type="checkbox" id="rq4"><span><b>Un sitio para los datos al que todas puedan llegar:</b> una carpeta compartida, un NAS, una base de datos o almacenamiento en la nube.</span></label></li>
+        <li><label><input type="checkbox" id="rq5"><span><b>Una IP fija para el scheduler</b>, o una reserva DHCP en el router, para que su dirección no cambie.</span></label></li>
+      </ul>
+      <div class="tbl"><table>
+        <thead><tr><th>Rol</th><th>Recomendado</th><th>Por qué</th></tr></thead>
+        <tbody>
+          <tr><td><span class="chip c-sched">Scheduler</span></td><td>2 núcleos, 4 GB RAM</td><td>Coordina el trabajo y casi no calcula. Cualquier PC estable sirve.</td></tr>
+          <tr><td><span class="chip c-work">Worker</span></td><td>4+ núcleos, 8+ GB RAM</td><td>Aquí se hace el trabajo pesado. Más núcleos y más memoria rinden más.</td></tr>
+          <tr><td><span class="chip c-client">Cliente</span></td><td>Lo que tengas</td><td>Solo envía las órdenes y recibe resultados ya resumidos.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="done"><button type="button" data-done="requisitos" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 02 -->
+    <section id="python" data-step>
+      <div class="sec-head"><div class="num">02</div><div><h2>Python y Dask iguales en todas</h2><p class="sub">Si las versiones no coinciden, el cluster falla con errores difíciles de entender.</p></div></div>
+      <div class="prose">
+        <p>Primero prepara una PC (la del scheduler) y después copia exactamente esa misma instalación a las demás.</p>
+        <h3>2.1 Comprueba la versión de Python</h3>
+      </div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Todas las PCs</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre>python --version</pre>
+      <div class="out"><div class="tag">Debe salir lo mismo en todas</div><pre>Python 3.14.0</pre></div></div>
+      <div class="prose"><p>Si no tienes Python, descárgalo de <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">python.org</a> y, al instalarlo, marca la casilla <b>“Add python.exe to PATH”</b>.</p>
+        <h3>2.2 Crea un entorno aislado</h3>
+        <p>Un entorno virtual es una carpeta con su propio Python y sus propias librerías. Usa la <b>misma ruta</b> en todas las PCs para no confundirte.</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Todas las PCs</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># Permite activar entornos virtuales (solo la primera vez)</span>
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+<span class="cm"># Crea la carpeta del proyecto y el entorno</span>
+mkdir C:\dask
+cd C:\dask
+python -m venv venv
+
+<span class="cm"># Actívalo (verás "(venv)" al inicio de la línea)</span>
+.\venv\Scripts\Activate.ps1</pre></div>
+      <div class="prose"><h3>2.3 Instala Dask en la primera PC y guarda las versiones</h3></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-sched">PC del scheduler</span>PowerShell · con (venv) activo</div><button class="copy" type="button">Copiar</button></div>
+<pre>pip install "dask[complete]" distributed pandas pyarrow
+
+<span class="cm"># Guarda la lista exacta de versiones instaladas</span>
+pip freeze &gt; C:\dask\requisitos.txt</pre></div>
+      <div class="prose"><h3>2.4 Instala lo mismo en los workers</h3>
+        <p>Copia <code>requisitos.txt</code> a la carpeta <code>C:\dask</code> de cada worker (con una USB o por la carpeta compartida) y ejecuta:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Cada worker</span>PowerShell · con (venv) activo</div><button class="copy" type="button">Copiar</button></div>
+<pre>pip install -r C:\dask\requisitos.txt
+
+<span class="cm"># Comprueba: los números deben ser iguales en todas las PCs</span>
+python -c "import dask, distributed; print(dask.__version__, distributed.__version__)"</pre></div>
+      <div class="note"><b>Regla de oro</b>Cualquier librería que use tu script (pandas, numpy, scikit-learn…) tiene que estar instalada <b>en todos los workers</b>, porque son ellos los que ejecutan el código. Si instalas algo nuevo, vuelve a generar <code>requisitos.txt</code> y repite la instalación en todas las PCs.</div>
+      <div class="done"><button type="button" data-done="python" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 03 -->
+    <section id="red" data-step>
+      <div class="sec-head"><div class="num">03</div><div><h2>Preparar la red</h2><p class="sub">Averigua las IP y deja que las PCs se vean entre sí.</p></div></div>
+      <div class="prose"><h3>3.1 Averigua la IP de cada PC</h3></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Todas las PCs</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre>ipconfig</pre>
+      <div class="out"><div class="tag">Busca la línea IPv4 de tu adaptador Ethernet o WiFi</div><pre>Adaptador de Ethernet Ethernet:
+   Dirección IPv4. . . . . . . . . . . . . . : <span class="ip-s">192.168.1.10</span>
+   Máscara de subred . . . . . . . . . . . . : 255.255.255.0
+   Puerta de enlace predeterminada . . . . . : 192.168.1.1</pre></div></div>
+      <div class="prose"><p>Escribe esas direcciones en el recuadro de arriba de la página. Haz una tabla así para no perderte:</p></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Nombre</th><th>Rol</th><th>IP</th><th>Núcleos / RAM</th></tr></thead>
+        <tbody>
+          <tr><td>PC-OFICINA</td><td><span class="chip c-sched">Scheduler</span> <span class="chip c-client">Cliente</span></td><td><code class="ip-s">192.168.1.10</code></td><td>4 / 8 GB</td></tr>
+          <tr><td>PC-SALA-1</td><td><span class="chip c-work">Worker</span></td><td><code class="ip-w">192.168.1.21</code></td><td>8 / 16 GB</td></tr>
+          <tr><td>PC-SALA-2</td><td><span class="chip c-work">Worker</span></td><td><code>192.168.1.22</code></td><td>8 / 16 GB</td></tr>
+        </tbody>
+      </table></div>
+      <div class="prose"><h3>3.2 Marca la red como “Privada”</h3>
+        <p>Windows bloquea casi todo en las redes “Públicas”. Pon la red como privada en todas las PCs:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Todas las PCs</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># Ver el nombre y la categoría de tu red</span>
+Get-NetConnectionProfile
+
+<span class="cm"># Cambiarla a Privada (usa el InterfaceAlias que te salió arriba)</span>
+Set-NetConnectionProfile -InterfaceAlias "Ethernet" -NetworkCategory Private</pre></div>
+      <div class="prose"><h3>3.3 Evita que las PCs se duerman</h3>
+        <p>Si un worker entra en suspensión, el cluster lo pierde y las tareas en curso se repiten. En las PCs que hagan de worker o de scheduler:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Scheduler y workers</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># 0 = nunca suspender (enchufada a la corriente)</span>
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0</pre></div>
+      <div class="note"><b>IP fija para el scheduler</b>Lo más cómodo es entrar al router (normalmente <code>192.168.1.1</code>) y hacer una “reserva DHCP” para la PC del scheduler. Así siempre recibe la misma IP y no tendrás que cambiar los comandos.</div>
+      <div class="done"><button type="button" data-done="red" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 04 -->
+    <section id="firewall" data-step>
+      <div class="sec-head"><div class="num">04</div><div><h2>Abrir el firewall</h2><p class="sub">Es la causa número uno de que “no conecta”. Hazlo con calma.</p></div></div>
+      <div class="prose"><p>Dask usa estos puertos TCP. Vamos a fijar los puertos de los workers en un rango conocido para poder abrirlos en el firewall.</p></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Puerto</th><th>Dónde</th><th>Para qué</th></tr></thead>
+        <tbody>
+          <tr><td><code>8786</code></td><td><span class="chip c-sched">Scheduler</span></td><td>Clientes y workers se conectan aquí</td></tr>
+          <tr><td><code>8787</code></td><td><span class="chip c-sched">Scheduler</span></td><td>Panel web para ver el cluster en vivo</td></tr>
+          <tr><td><code>9000–9010</code></td><td><span class="chip c-work">Workers</span></td><td>El scheduler y los otros workers les envían tareas y datos</td></tr>
+          <tr><td><code>9100–9110</code></td><td><span class="chip c-work">Workers</span></td><td>El “nanny”, que vigila y reinicia cada proceso worker</td></tr>
+        </tbody>
+      </table></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-sched">PC del scheduler</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre>New-NetFirewallRule -DisplayName "Dask Scheduler" -Direction Inbound `
+  -Protocol TCP -LocalPort 8786,8787 -Action Allow -Profile Private</pre></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Cada worker</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre>New-NetFirewallRule -DisplayName "Dask Worker" -Direction Inbound `
+  -Protocol TCP -LocalPort 9000-9010,9100-9110 -Action Allow -Profile Private</pre></div>
+      <div class="prose"><h3>Prueba la conexión antes de seguir</h3>
+        <p>Este comando comprueba si un puerto responde. Funcionará cuando el scheduler esté encendido (paso 5), así que vuelve aquí si algo falla.</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Desde un worker</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre>Test-NetConnection <span class="ip-s">192.168.1.10</span> -Port 8786</pre>
+      <div class="out"><div class="tag">Lo que quieres ver</div><pre>ComputerName     : <span class="ip-s">192.168.1.10</span>
+RemotePort       : 8786
+TcpTestSucceeded : True</pre></div></div>
+      <div class="note warn"><b>Si tienes otro antivirus</b>Productos como ESET, Kaspersky o Norton tienen su propio firewall y la regla de Windows no basta. Añade allí la misma excepción para los puertos, o permite <code>C:\dask\venv\Scripts\python.exe</code>.</div>
+      <div class="done"><button type="button" data-done="firewall" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 05 -->
+    <section id="scheduler" data-step>
+      <div class="sec-head"><div class="num">05</div><div><h2>Encender el scheduler</h2><p class="sub">Un solo comando en la PC coordinadora.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-sched">PC del scheduler</span>PowerShell · con (venv) activo</div><button class="copy" type="button">Copiar</button></div>
+<pre>cd C:\dask
+.\venv\Scripts\Activate.ps1
+
+dask scheduler --host 0.0.0.0 --port 8786 --dashboard-address :8787</pre>
+      <div class="out"><div class="tag">Salida esperada</div><pre>distributed.scheduler - INFO - -----------------------------------------------
+distributed.scheduler - INFO -   Scheduler at:   tcp://<span class="ip-s">192.168.1.10</span>:8786
+distributed.scheduler - INFO -   dashboard at:   http://<span class="ip-s">192.168.1.10</span>:8787/status
+distributed.scheduler - INFO - -----------------------------------------------</pre></div></div>
+      <div class="prose">
+        <ul>
+          <li><code>--host 0.0.0.0</code> hace que escuche en todas las tarjetas de red, no solo en la propia PC.</li>
+          <li><b>No cierres esta ventana.</b> Si la cierras, el cluster se apaga. Para detenerlo a propósito, pulsa <code>Ctrl + C</code>.</li>
+          <li>Ahora abre en el navegador <code>http://<span class="ip-s">192.168.1.10</span>:8787/status</code>. Verás el panel vacío, todavía sin workers.</li>
+        </ul>
+      </div>
+      <div class="done"><button type="button" data-done="scheduler" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 06 -->
+    <section id="workers" data-step>
+      <div class="sec-head"><div class="num">06</div><div><h2>Conectar los workers</h2><p class="sub">Repite esto en cada PC que vaya a trabajar.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Cada worker</span>PowerShell · con (venv) activo</div><button class="copy" type="button">Copiar</button></div>
+<pre>cd C:\dask
+.\venv\Scripts\Activate.ps1
+
+dask worker tcp://<span class="ip-s">192.168.1.10</span>:8786 `
+  --nworkers 2 --nthreads 2 --memory-limit 6GB `
+  --worker-port 9000:9010 --nanny-port 9100:9110 `
+  --host <span class="ip-w">192.168.1.21</span> --name $env:COMPUTERNAME</pre>
+      <div class="out"><div class="tag">Salida esperada</div><pre>distributed.worker - INFO -       Start worker at:  tcp://<span class="ip-w">192.168.1.21</span>:9000
+distributed.worker - INFO - Waiting to connect to:  tcp://<span class="ip-s">192.168.1.10</span>:8786
+distributed.worker - INFO -         Registered to:  tcp://<span class="ip-s">192.168.1.10</span>:8786</pre></div></div>
+      <div class="prose"><h3>¿Qué significa cada opción?</h3></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Opción</th><th>Qué hace</th><th>Cómo elegir el valor</th></tr></thead>
+        <tbody>
+          <tr><td><code>--nworkers</code></td><td>Cuántos procesos worker arranca en esa PC</td><td>Núcleos ÷ 2 es un buen inicio. Con 8 núcleos, pon 4.</td></tr>
+          <tr><td><code>--nthreads</code></td><td>Hilos dentro de cada proceso</td><td>2 suele ir bien. Para pandas puro, usa más procesos y menos hilos.</td></tr>
+          <tr><td><code>--memory-limit</code></td><td>RAM máxima <b>por proceso</b></td><td>(RAM total − 2 GB para Windows) ÷ nworkers. Con 16 GB y 2 procesos, pon 6GB.</td></tr>
+          <tr><td><code>--worker-port</code></td><td>Puertos fijos para los procesos</td><td>Debe coincidir con lo que abriste en el firewall.</td></tr>
+          <tr><td><code>--host</code></td><td>IP propia por la que lo contactan</td><td>La IP de <b>esta</b> PC. Evita que Dask elija una tarjeta de red equivocada (VPN, VirtualBox…).</td></tr>
+          <tr><td><code>--name</code></td><td>Nombre visible en el panel</td><td><code>$env:COMPUTERNAME</code> usa el nombre de la PC.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>La PC del scheduler también puede trabajar</b>Abre otra ventana de PowerShell en esa PC y lanza también un worker. Usa menos memoria allí, porque el scheduler y tu script también la necesitan.</div>
+      <div class="done"><button type="button" data-done="workers" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 07 -->
+    <section id="verificar" data-step>
+      <div class="sec-head"><div class="num">07</div><div><h2>Comprobar que funciona</h2><p class="sub">Un script corto confirma que todos los workers responden.</p></div></div>
+      <div class="prose"><p>Guarda este archivo como <code>C:\dask\probar_cluster.py</code> en la PC cliente:</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">PC cliente</span>probar_cluster.py</div><button class="copy" type="button">Copiar</button></div>
+<pre>from dask.distributed import Client
+import socket
+
+def quien_soy(x):
+    <span class="cm"># Esta función se ejecuta en los workers, no en tu PC</span>
+    return socket.gethostname(), x * x
+
+if __name__ == "__main__":
+    client = Client("tcp://<span class="ip-s">192.168.1.10</span>:8786")
+
+    info = client.scheduler_info()["workers"]
+    print(f"Workers conectados: {len(info)}")
+    for direccion, w in info.items():
+        print(f"  {w['name']:&lt;20} {direccion}  hilos={w['nthreads']}")
+
+    <span class="cm"># Revisa que todos tengan las mismas versiones</span>
+    client.get_versions(check=True)
+
+    <span class="cm"># Envía 40 tareas y mira qué PC resolvió cada una</span>
+    futuros = client.map(quien_soy, range(40))
+    for pc, valor in client.gather(futuros)[:8]:
+        print(f"  {pc} calculó {valor}")
+
+    client.close()</pre></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">PC cliente</span>PowerShell · con (venv) activo</div><button class="copy" type="button">Copiar</button></div>
+<pre>python C:\dask\probar_cluster.py</pre>
+      <div class="out"><div class="tag">Ejemplo de salida con 2 PCs</div><pre>Workers conectados: 4
+  PC-SALA-1-0          tcp://192.168.1.21:9000  hilos=2
+  PC-SALA-1-1          tcp://192.168.1.21:9001  hilos=2
+  PC-SALA-2-0          tcp://192.168.1.22:9000  hilos=2
+  PC-SALA-2-1          tcp://192.168.1.22:9001  hilos=2
+  PC-SALA-1 calculó 0
+  PC-SALA-2 calculó 1
+  ...</pre></div></div>
+      <div class="note"><b>Mira el panel mientras corre</b>En <code>http://<span class="ip-s">192.168.1.10</span>:8787/status</code> verás barras de colores con cada tarea. La pestaña <b>Workers</b> muestra la CPU y la memoria de cada PC en tiempo real.</div>
+      <div class="note warn"><b>¿Por qué <code>if __name__ == "__main__":</code>?</b>En Windows es obligatorio. Sin esa línea, Python puede volver a ejecutar tu script dentro de cada proceso nuevo y se queda en un bucle de errores.</div>
+      <div class="done"><button type="button" data-done="verificar" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 08 -->
+    <section id="datos" data-step>
+      <div class="sec-head"><div class="num">08</div><div><h2>Compartir los datos</h2><p class="sub">Cada worker lee los archivos por su cuenta, así que todos deben poder llegar a ellos.</p></div></div>
+      <div class="prose">
+        <p>Este es el error más común: el script dice <code>C:\datos\ventas.csv</code>, pero esa ruta solo existe en tu PC. Los workers buscan en <b>su</b> disco C: y no encuentran nada.</p>
+        <h3>Opción sencilla: una carpeta compartida de Windows</h3>
+        <ol>
+          <li>En la PC que guarda los datos, crea <code>C:\datos</code> y pon ahí tus archivos.</li>
+          <li>Compártela con permiso de lectura para los usuarios que usarán los workers.</li>
+          <li>En el código usa siempre la <b>ruta de red completa (UNC)</b>, no una letra de unidad como <code>Z:</code>.</li>
+        </ol>
+      </div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-sched">PC con los datos</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre>mkdir C:\datos
+New-SmbShare -Name "datos" -Path "C:\datos" -ReadAccess "Todos"
+<span class="cm"># En Windows en inglés el grupo se llama "Everyone"</span></pre></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Desde cada worker</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># Debe listar los archivos. Si pide contraseña o falla, revisa los permisos.</span>
+dir <span class="share">\\192.168.1.10\datos</span></pre></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Dónde guardar los datos</th><th>Cuándo conviene</th><th>Ruta en el código</th></tr></thead>
+        <tbody>
+          <tr><td>Carpeta compartida / NAS</td><td>Oficina pequeña, de MB a decenas de GB</td><td><code>r"\\servidor\datos\*.csv"</code></td></tr>
+          <tr><td>Base de datos (PostgreSQL, SQL Server)</td><td>Los datos ya están en una base</td><td><code>dd.read_sql_table(...)</code></td></tr>
+          <tr><td>MinIO o S3</td><td>Mucho volumen o PCs en sitios distintos</td><td><code>"s3://bucket/ventas/*.parquet"</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>Usa Parquet para datos grandes</b>Convierte tus CSV a Parquet una vez. Ocupa mucho menos, se lee varias veces más rápido y guarda los tipos de columna. Lo verás en el siguiente paso.</div>
+      <div class="done"><button type="button" data-done="datos" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 09 -->
+    <section id="trabajo" data-step>
+      <div class="sec-head"><div class="num">09</div><div><h2>Tu primer trabajo real</h2><p class="sub">Leer muchos CSV, limpiarlos, resumirlos y guardar el resultado, usando todo el cluster.</p></div></div>
+      <div class="prose"><p>Supongamos que en la carpeta compartida hay archivos <code>ventas_2025_01.csv</code>, <code>ventas_2025_02.csv</code>… con las columnas <code>fecha, tienda, categoria, monto</code>.</p></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">PC cliente</span>procesar_ventas.py</div><button class="copy" type="button">Copiar</button></div>
+<pre>import time
+import dask.dataframe as dd
+from dask.distributed import Client, progress
+
+SCHEDULER = "tcp://<span class="ip-s">192.168.1.10</span>:8786"
+DATOS     = r"<span class="share">\\192.168.1.10\datos</span>"
+
+if __name__ == "__main__":
+    client = Client(SCHEDULER)
+    print("Panel:", client.dashboard_link)
+    inicio = time.time()
+
+    <span class="cm"># 1. Leer: Dask crea una partición por archivo (o por bloque)</span>
+    df = dd.read_csv(
+        DATOS + r"\ventas_*.csv",
+        dtype={"tienda": "string", "categoria": "string", "monto": "float64"},
+        parse_dates=["fecha"],
+        blocksize="64MB",
+    )
+
+    <span class="cm"># 2. Limpiar y transformar (todavía no se calcula nada: es "perezoso")</span>
+    df = df.dropna(subset=["monto"])
+    df = df[df["monto"] &gt; 0]
+    df["mes"] = df["fecha"].dt.to_period("M").astype("string")
+
+    <span class="cm"># 3. Guardar una copia limpia en Parquet (lo hacen los workers en paralelo)</span>
+    df.to_parquet(DATOS + r"\ventas_limpias", write_index=False, overwrite=True)
+
+    <span class="cm"># 4. Resumir. Con .persist() los datos quedan en la memoria del cluster</span>
+    limpio = dd.read_parquet(DATOS + r"\ventas_limpias").persist()
+    progress(limpio)
+
+    por_categoria = limpio.groupby("categoria")["monto"].agg(["sum", "mean", "count"])
+    por_mes       = limpio.groupby(["mes", "tienda"])["monto"].sum()
+
+    <span class="cm"># 5. .compute() trae el resultado pequeño a tu PC como DataFrame de pandas</span>
+    resumen = por_categoria.compute().sort_values("sum", ascending=False)
+    print(resumen.head(10))
+    por_mes.compute().to_csv(DATOS + r"\resumen_por_mes.csv")
+
+    print(f"Listo en {time.time() - inicio:.1f} s")
+    client.close()</pre></div>
+      <div class="prose">
+        <h3>Tres ideas clave para entender el código</h3>
+        <ul>
+          <li><b>Evaluación perezosa.</b> Las operaciones solo arman un plan. El trabajo empieza al llamar a <code>.compute()</code>, <code>.persist()</code> o <code>.to_parquet()</code>.</li>
+          <li><b>Particiones.</b> Dask divide el DataFrame en trozos y cada worker procesa algunos. Apunta a particiones de 50 a 200 MB.</li>
+          <li><b>Trae a tu PC solo lo pequeño.</b> <code>.compute()</code> sobre millones de filas puede llenar la memoria del cliente. Resume primero o guarda en disco.</li>
+        </ul>
+        <h3>¿Usas tus propias funciones en otro archivo?</h3>
+        <p>Si tu script importa un módulo tuyo (por ejemplo <code>utilidades.py</code>), los workers no lo tienen. Envíaselo así:</p>
+      </div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-client">PC cliente</span>Python</div><button class="copy" type="button">Copiar</button></div>
+<pre>client.upload_file(r"C:\dask\utilidades.py")
+<span class="cm"># Ahora los workers pueden ejecutar funciones de utilidades.py</span></pre></div>
+      <div class="done"><button type="button" data-done="trabajo" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 10 -->
+    <section id="auto" data-step>
+      <div class="sec-head"><div class="num">10</div><div><h2>Arranque automático</h2><p class="sub">Para no abrir PowerShell a mano en cada PC cada día.</p></div></div>
+      <div class="prose"><h3>10.1 Crea un archivo .bat en cada máquina</h3></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-sched">PC del scheduler</span>C:\dask\iniciar_scheduler.bat</div><button class="copy" type="button">Copiar</button></div>
+<pre>@echo off
+cd /d C:\dask
+call venv\Scripts\activate.bat
+dask scheduler --host 0.0.0.0 --port 8786 --dashboard-address :8787 &gt;&gt; C:\dask\scheduler.log 2&gt;&amp;1</pre></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Cada worker</span>C:\dask\iniciar_worker.bat</div><button class="copy" type="button">Copiar</button></div>
+<pre>@echo off
+cd /d C:\dask
+call venv\Scripts\activate.bat
+<span class="cm">:: Espera 30 s a que la red esté lista</span>
+timeout /t 30 /nobreak &gt;nul
+dask worker tcp://<span class="ip-s">192.168.1.10</span>:8786 --nworkers 2 --nthreads 2 --memory-limit 6GB --worker-port 9000:9010 --nanny-port 9100:9110 --host <span class="ip-w">192.168.1.21</span> --name %COMPUTERNAME% &gt;&gt; C:\dask\worker.log 2&gt;&amp;1</pre></div>
+      <div class="prose"><p>Prueba primero cada <code>.bat</code> con doble clic. Si funciona, prográmalo para que arranque solo.</p>
+        <h3>10.2 Prográmalo con el Programador de tareas</h3></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-work">Cada worker</span>PowerShell como Administrador</div><button class="copy" type="button">Copiar</button></div>
+<pre>schtasks /Create /TN "Dask Worker" /TR "C:\dask\iniciar_worker.bat" `
+  /SC ONLOGON /RL HIGHEST /F</pre></div>
+      <div class="prose"><p>En la PC del scheduler, haz lo mismo cambiando el nombre de la tarea y el archivo por <code>iniciar_scheduler.bat</code>. Con <code>ONLOGON</code> arranca al iniciar sesión, usando tu usuario, que ya tiene acceso a la carpeta compartida.</p></div>
+      <div class="note"><b>Revisa los registros</b>Si algo no arranca, abre <code>C:\dask\worker.log</code> o <code>C:\dask\scheduler.log</code>. El error casi siempre aparece en las últimas líneas.</div>
+      <div class="done"><button type="button" data-done="auto" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 11 -->
+    <section id="problemas" data-step>
+      <div class="sec-head"><div class="num">11</div><div><h2>Si algo falla</h2><p class="sub">Los errores más frecuentes y cómo resolverlos.</p></div></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Síntoma</th><th>Causa probable</th><th>Solución</th></tr></thead>
+        <tbody>
+          <tr><td><code>OSError: Timed out trying to connect</code></td><td>Firewall cerrado, IP incorrecta o scheduler apagado</td><td><code>Test-NetConnection IP -Port 8786</code> desde el worker. Revisa el paso 4.</td></tr>
+          <tr><td>El worker se registra pero las tareas nunca terminan</td><td>El scheduler no puede volver a conectar con el worker</td><td>Abre los puertos 9000–9110 en el worker y usa <code>--host</code> con su IP real.</td></tr>
+          <tr><td><code>Mismatched versions found</code></td><td>Versiones diferentes de Python o de alguna librería</td><td>Reinstala con el mismo <code>requisitos.txt</code> en todas (paso 2).</td></tr>
+          <tr><td><code>FileNotFoundError</code> en los workers</td><td>Ruta local o letra de unidad mapeada</td><td>Usa la ruta UNC <code>\\servidor\carpeta</code> (paso 8).</td></tr>
+          <tr><td><code>ModuleNotFoundError</code></td><td>Falta la librería o tu módulo en el worker</td><td>Instálala en todos o usa <code>client.upload_file()</code>.</td></tr>
+          <tr><td><code>KilledWorker</code> o “Worker exceeded 95% memory”</td><td>Particiones demasiado grandes o poco <code>--memory-limit</code></td><td>Baja <code>blocksize</code>, usa menos <code>--nworkers</code> con más memoria o filtra columnas al leer.</td></tr>
+          <tr><td>Más lento que en una sola PC</td><td>Datos pequeños o red lenta (WiFi)</td><td>Por debajo de ~1 GB, pandas solo suele ganar. Usa cable y Parquet.</td></tr>
+          <tr><td>Un worker desaparece del panel</td><td>La PC se suspendió o se reinició</td><td>Desactiva la suspensión (paso 3.3).</td></tr>
+        </tbody>
+      </table></div>
+      <div class="prose"><h3>Comandos útiles para diagnosticar</h3></div>
+      <div class="term"><div class="term-top"><div class="where"><span class="chip c-all">Cualquier PC</span>PowerShell</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># ¿Qué proceso está usando el puerto 8786?</span>
+netstat -ano | findstr :8786
+
+<span class="cm"># ¿Existen las reglas del firewall?</span>
+Get-NetFirewallRule -DisplayName "Dask*" | Format-Table DisplayName, Enabled, Profile
+
+<span class="cm"># Reiniciar todos los workers desde el cliente (libera memoria)</span>
+python -c "from dask.distributed import Client; Client('tcp://<span class="ip-s">192.168.1.10</span>:8786').restart()"</pre></div>
+      <div class="done"><button type="button" data-done="problemas" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 12 -->
+    <section id="seguridad" data-step>
+      <div class="sec-head"><div class="num">12</div><div><h2>Seguridad</h2><p class="sub">Un cluster de Dask ejecuta cualquier código que le envíen.</p></div></div>
+      <div class="note warn"><b>Nunca expongas los puertos a Internet</b>Cualquiera que llegue al puerto 8786 puede ejecutar programas en todas tus PCs. Por eso las reglas del firewall de esta guía usan <code>-Profile Private</code>. No abras estos puertos en el router.</div>
+      <div class="prose">
+        <ul>
+          <li>Usa el cluster solo dentro de tu red local o a través de una VPN.</li>
+          <li>Da a la carpeta compartida solo permisos de <b>lectura</b>, salvo la subcarpeta donde se guardan resultados.</li>
+          <li>Si la red la comparten personas que no conoces, activa el cifrado TLS de Dask con certificados. Consulta la sección “TLS/SSL” de la <a href="https://distributed.dask.org/en/stable/tls.html" target="_blank" rel="noopener">documentación oficial</a>.</li>
+          <li>Apaga el scheduler (<code>Ctrl + C</code>) cuando no lo uses.</li>
+        </ul>
+      </div>
+      <div class="done"><button type="button" data-done="seguridad" aria-pressed="false">Marcar paso como hecho</button></div>
+    </section>
+
+    <!-- 13 -->
+    <section id="resumen">
+      <div class="sec-head"><div class="num">13</div><div><h2>Resumen rápido</h2><p class="sub">La chuleta para el día a día, cuando ya está todo instalado.</p></div></div>
+      <div class="term"><div class="term-top"><div class="where">Las tres órdenes que encienden tu cluster</div><button class="copy" type="button">Copiar</button></div>
+<pre><span class="cm"># 1 · En la PC del scheduler</span>
+dask scheduler --host 0.0.0.0 --port 8786 --dashboard-address :8787
+
+<span class="cm"># 2 · En cada worker</span>
+dask worker tcp://<span class="ip-s">192.168.1.10</span>:8786 --nworkers 2 --nthreads 2 --memory-limit 6GB --worker-port 9000:9010 --nanny-port 9100:9110 --host <span class="ip-w">192.168.1.21</span>
+
+<span class="cm"># 3 · En tu script de Python</span>
+client = Client("tcp://<span class="ip-s">192.168.1.10</span>:8786")</pre></div>
+      <div class="prose">
+        <h3>Para seguir aprendiendo</h3>
+        <ul>
+          <li><a href="https://docs.dask.org/en/stable/" target="_blank" rel="noopener">Documentación de Dask</a>: DataFrames, arrays y tareas personalizadas.</li>
+          <li><a href="https://distributed.dask.org/en/stable/" target="_blank" rel="noopener">Dask Distributed</a>: todo sobre el scheduler, los workers y las opciones de configuración.</li>
+          <li><a href="https://docs.dask.org/en/stable/dashboard.html" target="_blank" rel="noopener">Cómo leer el panel web</a>: entender las gráficas te ayuda a encontrar cuellos de botella.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>Guía para montar un cluster de Dask con PCs Windows en una red local. Los comandos usan las IP que escribiste arriba.</footer>
+
+<script>
+(function(){
+  var KEY="guia-dask-v1";
+  var state={};
+  try{ state=JSON.parse(localStorage.getItem(KEY)||"{}")||{}; }catch(e){ state={}; }
+  function save(){ try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){} }
+
+  // IP substitution
+  var fields={ "ip-sched":"ip-s", "ip-work":"ip-w", "share":"share" };
+  Object.keys(fields).forEach(function(id){
+    var input=document.getElementById(id), cls=fields[id];
+    if(state[id]) input.value=state[id];
+    function apply(){
+      var v=input.value.trim()||input.defaultValue;
+      document.querySelectorAll("."+cls).forEach(function(el){ el.textContent=v; });
+    }
+    input.addEventListener("input",function(){ state[id]=input.value; save(); apply(); });
+    apply();
+  });
+
+  // Copy buttons
+  document.querySelectorAll(".term").forEach(function(t){
+    var btn=t.querySelector(".copy"), pre=t.querySelector("pre");
+    if(!btn||!pre) return;
+    btn.addEventListener("click",function(){
+      var txt=pre.innerText;
+      function ok(){ btn.textContent="Copiado"; setTimeout(function(){ btn.textContent="Copiar"; },1500); }
+      function fallback(){
+        var r=document.createRange(); r.selectNodeContents(pre);
+        var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent="Pulsa Ctrl+C"; setTimeout(function(){ btn.textContent="Copiar"; },2500);
+      }
+      try{ navigator.clipboard.writeText(txt).then(ok,fallback); }catch(e){ fallback(); }
+    });
+  });
+
+  // Checklist
+  document.querySelectorAll(".check input").forEach(function(cb){
+    cb.checked=!!state[cb.id];
+    cb.addEventListener("change",function(){ state[cb.id]=cb.checked; save(); });
+  });
+
+  // Step completion + progress
+  var btns=document.querySelectorAll("[data-done]");
+  var txt=document.getElementById("prog-txt"), bar=document.getElementById("prog-bar");
+  function render(){
+    var n=0;
+    btns.forEach(function(b){
+      var d=!!state["done-"+b.dataset.done];
+      b.setAttribute("aria-pressed",d?"true":"false");
+      b.textContent=d?"Paso hecho ✓":"Marcar paso como hecho";
+      if(d) n++;
+    });
+    txt.textContent=n+" de "+btns.length+" pasos";
+    bar.style.width=(n/btns.length*100)+"%";
+  }
+  btns.forEach(function(b){
+    b.addEventListener("click",function(){ var k="done-"+b.dataset.done; state[k]=!state[k]; save(); render(); });
+  });
+  render();
+
+  // TOC highlight
+  var links=document.querySelectorAll("#toc a");
+  var map={}; links.forEach(function(a){ map[a.getAttribute("href").slice(1)]=a; });
+  if("IntersectionObserver" in window){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ links.forEach(function(a){a.classList.remove("on");}); var a=map[en.target.id]; if(a) a.classList.add("on"); }
+      });
+    },{rootMargin:"-30% 0px -60% 0px"});
+    document.querySelectorAll("main section").forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
+
+</body>
+</html>
