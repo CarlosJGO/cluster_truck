@@ -1,13 +1,13 @@
 red_lan: 192.168.1.0/24
 puerto_scheduler: 8786
 puerto_dashboard: 8787
-coordinadora: pc-gamer
+coordinadora: linuxMint
 maquinas:
   linuxMint:
     so: linux
     ip: 192.168.1.9
     hilos: 1
-    datos: /home/carlosjgo/Documentos/Cosas de portatil/UNI/BigData/cluster_truck/datos
+    datos: datos/grupo01
   worker-1:
     so: windows
     ip: 172.20.10.2
